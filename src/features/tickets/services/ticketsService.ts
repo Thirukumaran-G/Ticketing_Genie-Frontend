@@ -1,0 +1,174 @@
+// src/features/tickets/services/ticketsService.ts
+// All API calls mapped EXACTLY to the backend routes provided.
+import { ticketClient, authClient } from '../../../lib/axios';
+import { ENV } from '../../../config/env';
+import {
+  TicketCreateResponse,
+  CustomerTicketListItem,
+  CustomerTicketDetail,
+  TicketQueueItem,
+  TLTicketDetail,
+  TeamOverviewResponse,
+  TicketThreadResponse,
+  ConversationItem,
+  AttachmentItem,
+} from '../../../types';
+
+export const ticketsService = {
+  // ── Customer routes: /customer/* ──────────────────────────────────────────
+  createTicket: (payload: {
+    title: string;
+    description: string;
+    product_id: string;
+    customer_severity: string;
+    environment?: string;
+    source?: string;
+  }) =>
+    ticketClient
+      .post<TicketCreateResponse>('/customer/tickets', payload)
+      .then((r) => r.data),
+
+  listMyTickets: () =>
+    ticketClient
+      .get<CustomerTicketListItem[]>('/customer/tickets')
+      .then((r) => r.data),
+
+  getMyTicket: (ticketId: string) =>
+    ticketClient
+      .get<CustomerTicketDetail>(`/customer/tickets/${ticketId}`)
+      .then((r) => r.data),
+
+  getThread: (ticketId: string) =>
+    ticketClient
+      .get<TicketThreadResponse>(`/customer/tickets/${ticketId}/thread`)
+      .then((r) => r.data),
+
+  replyToTicket: (ticketId: string, message: string) =>
+    ticketClient
+      .post<ConversationItem>(`/customer/tickets/${ticketId}/reply`, { message })
+      .then((r) => r.data),
+
+  uploadAttachment: (ticketId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return ticketClient
+      .post<AttachmentItem>(`/customer/tickets/${ticketId}/attachments`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
+
+  getAttachmentUrl: (ticketId: string, attachmentId: string) =>
+    `${ENV.TICKET_BASE}/customer/tickets/${ticketId}/attachments/${attachmentId}`,
+
+  // ── Agent routes: /agent/* ────────────────────────────────────────────────
+  getAgentQueue: () =>
+    ticketClient
+      .get<TicketQueueItem[]>('/agent/queue')
+      .then((r) => r.data),
+
+  getAgentTickets: () =>
+    ticketClient
+      .get<TLTicketDetail[]>('/agent/tickets')
+      .then((r) => r.data),
+
+  getAgentTicket: (ticketId: string) =>
+    ticketClient
+      .get<TLTicketDetail>(`/agent/tickets/${ticketId}`)
+      .then((r) => r.data),
+
+  getAgentThread: (ticketId: string) =>
+    ticketClient
+      .get<TicketThreadResponse>(`/agent/tickets/${ticketId}/thread`)
+      .then((r) => r.data),
+
+  postAgentComment: (ticketId: string, content: string, isInternal = false) =>
+    ticketClient
+      .post<ConversationItem>(`/agent/tickets/${ticketId}/comment`, {
+        content,
+        is_internal: isInternal,
+      })
+      .then((r) => r.data),
+
+  uploadAgentAttachment: (ticketId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return ticketClient
+      .post<AttachmentItem>(`/agent/tickets/${ticketId}/attachments`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
+
+  getAgentAttachmentUrl: (ticketId: string, attachmentId: string) =>
+    `${ENV.TICKET_BASE}/agent/tickets/${ticketId}/attachments/${attachmentId}`,
+
+  // postComment kept for backwards compat — delegates to postAgentComment
+  postComment: (ticketId: string, content: string) =>
+    ticketClient
+      .post<ConversationItem>(`/agent/tickets/${ticketId}/comment`, {
+        content,
+        is_internal: false,
+      })
+      .then((r) => r.data),
+
+  updateAgentStatus: (ticketId: string, status: string, reason?: string) =>
+    ticketClient
+      .patch<TLTicketDetail>(`/agent/tickets/${ticketId}/status`, {
+        status,
+        ...(reason ? { reason } : {}),
+      })
+      .then((r) => r.data),
+
+  // ── Team Lead routes: /teamlead/* ─────────────────────────────────────────
+  getTLQueue: () =>
+    ticketClient
+      .get<TicketQueueItem[]>('/teamlead/queue')
+      .then((r) => r.data),
+
+  getTLTickets: (status?: string) =>
+    ticketClient
+      .get<TLTicketDetail[]>('/teamlead/tickets', { params: status ? { status } : {} })
+      .then((r) => r.data),
+
+  getTLTicket: (ticketId: string) =>
+    ticketClient
+      .get<TLTicketDetail>(`/teamlead/tickets/${ticketId}`)
+      .then((r) => r.data),
+
+  manualAssign: (ticketId: string, agent_user_id: string) =>
+    ticketClient
+      .post<TLTicketDetail>(`/teamlead/tickets/${ticketId}/assign`, { agent_user_id })
+      .then((r) => r.data),
+
+  updateTLStatus: (ticketId: string, status: string) =>
+    ticketClient
+      .patch<TLTicketDetail>(`/teamlead/tickets/${ticketId}/status`, { status })
+      .then((r) => r.data),
+
+  getTeamOverview: () =>
+    ticketClient
+      .get<TeamOverviewResponse>('/teamlead/overview')
+      .then((r) => r.data),
+
+  // ── Products list (auth-service) ─────────────────────────────────────────
+  getProducts: () =>
+    authClient
+      .get<{ id: string; name: string; is_active: boolean }[]>('/products')
+      .then((r) => r.data),
+
+  getTicketCustomerInfo: (ticketId: string) =>
+    ticketClient
+      .get<{ full_name: string; email: string }>(`/agent/tickets/${ticketId}/customer`)
+      .then((r) => r.data),
+
+  // ── SSE stream URLs (use ENV so nginx routing is correct) ─────────────────
+  getAgentQueueStreamUrl: (token: string) =>
+    `${ENV.TICKET_BASE}/agent/queue/stream?token=${token}`,
+
+  getTLQueueStreamUrl: (token: string) =>
+    `${ENV.TICKET_BASE}/teamlead/queue/stream?token=${token}`,
+
+  getNotificationStreamUrl: (token: string) =>
+    `${ENV.TICKET_BASE}/notifications/stream?token=${token}`,
+};
