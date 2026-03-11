@@ -28,17 +28,27 @@ const TLOverviewPage     = lazy(() => import('../features/tickets/components/tea
 const TLTicketDetailPage = lazy(() => import('../features/tickets/components/teamlead/TLTicketDetailPage').then(m => ({ default: m.TLTicketDetailPage })));
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
-const AdminDashboard     = lazy(() => import('../features/admin/components/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
-const AdminCompaniesPage = lazy(() => import('../features/admin/components/AdminCompaniesPage').then(m => ({ default: m.AdminCompaniesPage })));
-const AdminProductsPage  = lazy(() => import('../features/admin/components/AdminProductsPage').then(m => ({ default: m.AdminProductsPage })));
-const AdminUsersPage     = lazy(() => import('../features/admin/components/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
-const AdminTeamsPage     = lazy(() => import('../features/admin/components/AdminTeamsPage').then(m => ({ default: m.AdminTeamsPage })));
-const AdminSLAPage       = lazy(() => import('../features/admin/components/AdminSLAPage').then(m => ({ default: m.AdminSLAPage })));
-// const AdminSevMapPage    = lazy(() => import('../features/admin/components/AdminSeverityMapPage').then(m => ({ default: m.AdminSeverityMapPage })));
-const AdminKeywordsPage  = lazy(() => import('../features/admin/components/AdminKeywordsPage').then(m => ({ default: m.AdminKeywordsPage })));
-const AdminProductCfg    = lazy(() => import('../features/admin/components/AdminProductConfigPage').then(m => ({ default: m.AdminProductConfigPage })));
-// const AdminEmailConfig   = lazy(() => import('../features/admin/components/AdminEmailConfigPage').then(m => ({ default: m.AdminEmailConfigPage })));
-const AdminReportsPage   = lazy(() => import('../features/admin/components/AdminReportsPage').then(m => ({ default: m.AdminReportsPage })));
+const AdminDashboard      = lazy(() => import('../features/admin/components/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
+const AdminCompaniesPage  = lazy(() => import('../features/admin/components/AdminCompaniesPage').then(m => ({ default: m.AdminCompaniesPage })));
+const AdminProductsPage   = lazy(() => import('../features/admin/components/AdminProductsPage').then(m => ({ default: m.AdminProductsPage })));
+const AdminUsersPage      = lazy(() => import('../features/admin/components/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
+const AdminTeamsPage      = lazy(() => import('../features/admin/components/AdminTeamsPage').then(m => ({ default: m.AdminTeamsPage })));
+const AdminSLAPage        = lazy(() => import('../features/admin/components/AdminSLAPage').then(m => ({ default: m.AdminSLAPage })));
+const AdminSevMapPage     = lazy(() => import('../features/admin/components/AdminSeverityMapPage').then(m => ({ default: m.AdminSeverityMapPage })));
+const AdminKeywordsPage   = lazy(() => import('../features/admin/components/AdminKeywordsPage').then(m => ({ default: m.AdminKeywordsPage })));
+const AdminProductCfg     = lazy(() => import('../features/admin/components/AdminProductConfigPage').then(m => ({ default: m.AdminProductConfigPage })));
+const AdminEmailConfig    = lazy(() => import('../features/admin/components/AdminEmailConfigPage').then(m => ({ default: m.AdminEmailConfigPage })));
+const AdminReportsPage    = lazy(() => import('../features/admin/components/AdminReportsPage').then(m => ({ default: m.AdminReportsPage })));
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+const NotificationsPage = lazy(() =>
+  import('../features/notifications/components/NotificationsPage').then(m => ({ default: m.NotificationsPage }))
+);
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const SettingsPageWrapper = lazy(() =>
+  import('../features/settings/components/SettingsPageWrapper').then(m => ({ default: m.SettingsPageWrapper }))
+);
 
 // ── Guards ────────────────────────────────────────────────────────────────────
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({ children, roles }) => {
@@ -95,11 +105,17 @@ export const AppRouter: React.FC = () => (
         <Route path="/admin/users"          element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminUsersPage /></ProtectedRoute>} />
         <Route path="/admin/teams"          element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminTeamsPage /></ProtectedRoute>} />
         <Route path="/admin/sla-rules"      element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminSLAPage /></ProtectedRoute>} />
-        {/* <Route path="/admin/severity-map"   element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminSevMapPage /></ProtectedRoute>} /> */}
+        <Route path="/admin/severity-map"   element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminSevMapPage /></ProtectedRoute>} />
         <Route path="/admin/keyword-rules"  element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminKeywordsPage /></ProtectedRoute>} />
         <Route path="/admin/product-config" element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminProductCfg /></ProtectedRoute>} />
-        {/* <Route path="/admin/email-config"   element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminEmailConfig /></ProtectedRoute>} /> */}
+        <Route path="/admin/email-config"   element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminEmailConfig /></ProtectedRoute>} />
         <Route path="/admin/reports"        element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminReportsPage /></ProtectedRoute>} />
+
+        {/* Notifications */}
+        <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+
+        {/* Settings — all roles */}
+        <Route path="/settings" element={<ProtectedRoute><SettingsPageWrapper /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

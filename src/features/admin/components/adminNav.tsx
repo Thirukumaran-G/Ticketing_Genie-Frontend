@@ -1,4 +1,3 @@
-// src/features/admin/components/adminNav.tsx
 import React from 'react';
 import { NavItem } from '../../../layouts/MainLayout';
 

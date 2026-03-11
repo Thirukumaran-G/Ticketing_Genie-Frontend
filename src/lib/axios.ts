@@ -39,12 +39,21 @@ export const ticketClient: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+export const notificationClient: AxiosInstance = axios.create({
+  baseURL: ENV.NOTIFICATION_BASE,
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+// ── Auth token injection ──────────────────────────────────────────────────────
 const addToken = (cfg: InternalAxiosRequestConfig) => {
   if (_accessToken && cfg.headers) cfg.headers.Authorization = `Bearer ${_accessToken}`;
   return cfg;
 };
+
 authClient.interceptors.request.use(addToken);
 ticketClient.interceptors.request.use(addToken);
+notificationClient.interceptors.request.use(addToken);
 
 // ── 401 → auto-refresh → replay ──────────────────────────────────────────────
 let isRefreshing = false;
@@ -82,7 +91,6 @@ const applyRefreshInterceptor = (instance: AxiosInstance) => {
       isRefreshing = true;
 
       try {
-        // ✅ /refresh not /auth/refresh — baseURL already includes /auth
         const { data } = await authClient.post<{
           access_token: string;
           refresh_token: string;
@@ -109,3 +117,4 @@ const applyRefreshInterceptor = (instance: AxiosInstance) => {
 
 applyRefreshInterceptor(authClient);
 applyRefreshInterceptor(ticketClient);
+applyRefreshInterceptor(notificationClient);

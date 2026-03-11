@@ -388,7 +388,7 @@ export const AgentTicketDetailPage: React.FC = () => {
 
         {/* Back */}
         <div className="px-5 pt-4 pb-3 flex-shrink-0">
-          <Link to="/tickets/queue" className="inline-flex items-center gap-2 text-zinc-500 hover:text-white text-sm transition-colors">
+          <Link to="/tickets/agent/all" className="inline-flex items-center gap-2 text-zinc-500 hover:text-white text-sm transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>

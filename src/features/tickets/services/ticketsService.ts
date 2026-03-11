@@ -1,5 +1,4 @@
 // src/features/tickets/services/ticketsService.ts
-// All API calls mapped EXACTLY to the backend routes provided.
 import { ticketClient, authClient } from '../../../lib/axios';
 import { ENV } from '../../../config/env';
 import {
@@ -15,7 +14,7 @@ import {
 } from '../../../types';
 
 export const ticketsService = {
-  // ── Customer routes: /customer/* ──────────────────────────────────────────
+  // ── Customer routes ───────────────────────────────────────────────────────
   createTicket: (payload: {
     title: string;
     description: string;
@@ -61,7 +60,7 @@ export const ticketsService = {
   getAttachmentUrl: (ticketId: string, attachmentId: string) =>
     `${ENV.TICKET_BASE}/customer/tickets/${ticketId}/attachments/${attachmentId}`,
 
-  // ── Agent routes: /agent/* ────────────────────────────────────────────────
+  // ── Agent routes ──────────────────────────────────────────────────────────
   getAgentQueue: () =>
     ticketClient
       .get<TicketQueueItem[]>('/agent/queue')
@@ -103,7 +102,6 @@ export const ticketsService = {
   getAgentAttachmentUrl: (ticketId: string, attachmentId: string) =>
     `${ENV.TICKET_BASE}/agent/tickets/${ticketId}/attachments/${attachmentId}`,
 
-  // postComment kept for backwards compat — delegates to postAgentComment
   postComment: (ticketId: string, content: string) =>
     ticketClient
       .post<ConversationItem>(`/agent/tickets/${ticketId}/comment`, {
@@ -120,7 +118,13 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
-  // ── Team Lead routes: /teamlead/* ─────────────────────────────────────────
+  // ── NEW: Agent unassign ───────────────────────────────────────────────────
+  unassignTicket: (ticketId: string, justification: string) =>
+    ticketClient
+      .patch(`/agent/tickets/${ticketId}/unassign`, { justification })
+      .then((r) => r.data),
+
+  // ── Team Lead routes ──────────────────────────────────────────────────────
   getTLQueue: () =>
     ticketClient
       .get<TicketQueueItem[]>('/teamlead/queue')
@@ -151,18 +155,23 @@ export const ticketsService = {
       .get<TeamOverviewResponse>('/teamlead/overview')
       .then((r) => r.data),
 
-  // ── Products list (auth-service) ─────────────────────────────────────────
-  getProducts: () =>
-    authClient
-      .get<{ id: string; name: string; is_active: boolean }[]>('/products')
-      .then((r) => r.data),
-
   getTicketCustomerInfo: (ticketId: string) =>
     ticketClient
       .get<{ full_name: string; email: string }>(`/agent/tickets/${ticketId}/customer`)
       .then((r) => r.data),
 
-  // ── SSE stream URLs (use ENV so nginx routing is correct) ─────────────────
+  // ── NEW: Team Lead thread + internal note ─────────────────────────────────
+  getTLTicketThread: (ticketId: string) =>
+    ticketClient
+      .get<TicketThreadResponse>(`/teamlead/tickets/${ticketId}/thread`)
+      .then((r) => r.data),
+
+  postTLInternalNote: (ticketId: string, content: string) =>
+    ticketClient
+      .post(`/teamlead/tickets/${ticketId}/note`, { content })
+      .then((r) => r.data),
+
+  // ── SSE stream URLs ───────────────────────────────────────────────────────
   getAgentQueueStreamUrl: (token: string) =>
     `${ENV.TICKET_BASE}/agent/queue/stream?token=${token}`,
 
@@ -171,4 +180,10 @@ export const ticketsService = {
 
   getNotificationStreamUrl: (token: string) =>
     `${ENV.TICKET_BASE}/notifications/stream?token=${token}`,
+
+  // ── Products list ─────────────────────────────────────────────────────────
+  getProducts: () =>
+    authClient
+      .get<{ id: string; name: string; is_active: boolean }[]>('admin/products')
+      .then((r) => r.data),
 };
