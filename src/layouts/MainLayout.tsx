@@ -8,6 +8,13 @@ export interface NavItem {
   label: string;
   path: string;
   icon: React.ReactNode;
+  /**
+   * Extra paths that should also activate this nav item.
+   * e.g. a detail page /tickets/teamlead/queue/some-id should
+   * keep "Team Queue" highlighted.
+   * If not provided, only exact match on `path` activates the item.
+   */
+  matchPrefixes?: string[];
 }
 
 const Logo = () => (
@@ -20,7 +27,10 @@ const Logo = () => (
 );
 
 const roleLabel: Record<string, string> = {
-  customer: 'Customer', agent: 'Support Agent', team_lead: 'Team Lead', admin: 'Admin',
+  customer:   'Customer',
+  agent:      'Support Agent',
+  team_lead:  'Team Lead',
+  admin:      'Admin',
 };
 
 interface SidebarProps {
@@ -28,9 +38,21 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+function isNavActive(item: NavItem, pathname: string): boolean {
+  // Exact match always wins
+  if (pathname === item.path) return true;
+  // Check explicit matchPrefixes if provided
+  if (item.matchPrefixes) {
+    return item.matchPrefixes.some(
+      (prefix) => pathname === prefix || pathname.startsWith(prefix + '/')
+    );
+  }
+  return false;
+}
+
 const Sidebar: React.FC<SidebarProps> = ({ navItems, onClose }) => {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const location  = useLocation();
+  const navigate  = useNavigate();
   const { user, logout } = useAuth();
 
   const handleLogout = async () => {
@@ -40,6 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, onClose }) => {
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 border-r border-zinc-900">
+      {/* Brand */}
       <div className="px-4 py-5 border-b border-zinc-900">
         <div className="flex items-center gap-3">
           <Logo />
@@ -52,11 +75,10 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, onClose }) => {
         </div>
       </div>
 
+      {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
-          const active =
-            location.pathname === item.path ||
-            location.pathname.startsWith(item.path + '/');
+          const active = isNavActive(item, location.pathname);
           return (
             <Link
               key={item.path}
@@ -76,6 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, onClose }) => {
         })}
       </nav>
 
+      {/* User + logout */}
       <div className="px-3 py-4 border-t border-zinc-900 space-y-1">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">

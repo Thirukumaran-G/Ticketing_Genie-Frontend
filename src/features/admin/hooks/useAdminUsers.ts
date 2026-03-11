@@ -1,24 +1,28 @@
-// src/features/admin/hooks/useAdminUsers.ts
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { adminAuthService } from '../services/adminAuthService';
 import { AdminUserResponse } from '../../../types';
 
 export const useAdminUsers = () => {
-  const [users, setUsers]     = useState<AdminUserResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState('all');
+  const [users, setUsers]       = useState<AdminUserResponse[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState('all');
 
-  const load = useCallback(() =>
-    adminAuthService.listUsers().then(setUsers).finally(() => setLoading(false)), []);
+  const load = async () => {
+    setLoading(true);
+    try { setUsers(await adminAuthService.listUsers()); }
+    finally { setLoading(false); }
+  };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, []);
 
-  const deactivate = useCallback(async (userId: string) => {
-    await adminAuthService.deactivateUser(userId);
-    load();
-  }, [load]);
+  const filtered = filter === 'all'
+    ? users
+    : users.filter(u => u.role === filter);
 
-  const filtered = filter === 'all' ? users : users.filter((u) => u.role === filter);
+  const deactivate = async (id: string) => {
+    await adminAuthService.deactivateUser(id);
+    await load();
+  };
 
-  return { users, filtered, loading, filter, setFilter, deactivate };
+  return { users, filtered, loading, filter, setFilter, deactivate, reload: load };
 };
