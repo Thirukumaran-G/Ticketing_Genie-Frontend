@@ -4,13 +4,13 @@ import { clsx } from 'clsx';
 export type BadgeVariant = 'default' | 'critical' | 'high' | 'medium' | 'low' | 'success' | 'warning';
 
 const badgeCls: Record<BadgeVariant, string> = {
-  default:  'bg-zinc-800 text-zinc-300 border-zinc-700',
-  critical: 'bg-red-950 text-red-400 border-red-800',
-  high:     'bg-orange-950 text-orange-400 border-orange-800',
-  medium:   'bg-yellow-950 text-yellow-400 border-yellow-800',
-  low:      'bg-blue-950 text-blue-400 border-blue-800',
-  success:  'bg-green-950 text-green-400 border-green-800',
-  warning:  'bg-yellow-950 text-yellow-400 border-yellow-800',
+  default:  'bg-slate-100 text-slate-600 border-slate-200',
+  critical: 'bg-red-50 text-red-700 border-red-200',
+  high:     'bg-orange-50 text-orange-700 border-orange-200',
+  medium:   'bg-yellow-50 text-yellow-700 border-yellow-200',
+  low:      'bg-blue-50 text-blue-700 border-blue-200',
+  success:  'bg-green-50 text-green-700 border-green-200',
+  warning:  'bg-amber-50 text-amber-700 border-amber-200',
 };
 
 export interface BadgeProps {
@@ -21,7 +21,7 @@ export interface BadgeProps {
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant = 'default', className }) => (
   <span className={clsx(
-    'inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide border',
+    'inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold uppercase tracking-wide border',
     badgeCls[variant as BadgeVariant], className
   )}>
     {children}

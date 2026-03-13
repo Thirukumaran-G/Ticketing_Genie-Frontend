@@ -1,19 +1,8 @@
+// src/features/notifications/services/notificationsService.ts
 import { ticketClient } from '../../../lib/axios';
+import { NotificationItem, NotificationPreference } from '../../../types'; // ✅ import global types
 
-export interface NotificationItem {
-  id: string;
-  type: string | null;
-  title: string | null;
-  message: string | null;
-  is_read: boolean;
-  created_at: string;
-  ticket_id: string | null;
-}
-
-export interface NotificationPreference {
-  user_id: string;
-  preferred_contact: 'email' | 'in_app';
-}
+export type { NotificationItem, NotificationPreference }; // re-export if needed elsewhere
 
 export const notificationsService = {
   list: (unreadOnly = false) =>

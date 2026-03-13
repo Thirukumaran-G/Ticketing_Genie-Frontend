@@ -1,4 +1,5 @@
-// src/features/tickets/services/ticketsService.ts
+
+
 import { ticketClient, authClient } from '../../../lib/axios';
 import { ENV } from '../../../config/env';
 import {
@@ -35,6 +36,12 @@ export const ticketsService = {
   getMyTicket: (ticketId: string) =>
     ticketClient
       .get<CustomerTicketDetail>(`/customer/tickets/${ticketId}`)
+      .then((r) => r.data),
+
+  // ── NEW: Customer — get assigned agent name ───────────────────────────────
+  getTicketAgentInfo: (ticketId: string) =>
+    ticketClient
+      .get<{ assigned: boolean; agent_name: string | null }>(`/customer/tickets/${ticketId}/agent`)
       .then((r) => r.data),
 
   getThread: (ticketId: string) =>
@@ -118,7 +125,7 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
-  // ── NEW: Agent unassign ───────────────────────────────────────────────────
+  // ── Agent unassign ────────────────────────────────────────────────────────
   unassignTicket: (ticketId: string, justification: string) =>
     ticketClient
       .patch(`/agent/tickets/${ticketId}/unassign`, { justification })
@@ -160,7 +167,7 @@ export const ticketsService = {
       .get<{ full_name: string; email: string }>(`/agent/tickets/${ticketId}/customer`)
       .then((r) => r.data),
 
-  // ── NEW: Team Lead thread + internal note ─────────────────────────────────
+  // ── Team Lead thread + internal note ─────────────────────────────────────
   getTLTicketThread: (ticketId: string) =>
     ticketClient
       .get<TicketThreadResponse>(`/teamlead/tickets/${ticketId}/thread`)

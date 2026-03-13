@@ -73,15 +73,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
       <div className="w-full p-6 flex flex-col gap-6 max-w-2xl">
 
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Settings</h2>
-          <p className="text-zinc-500 text-sm mt-0.5">Manage your account preferences</p>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Settings</h2>
+          <p className="text-slate-600 text-sm mt-0.5">Manage your account preferences</p>
         </div>
 
         {/* Change Password */}
-        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 flex flex-col gap-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col gap-5">
           <div>
-            <h3 className="text-sm font-semibold text-white">Change Password</h3>
-            <p className="text-zinc-500 text-xs mt-0.5">Use a strong password with at least 8 characters</p>
+            <h3 className="text-sm font-semibold text-slate-900">Change Password</h3>
+            <p className="text-slate-600 text-xs mt-0.5">Use a strong password with at least 8 characters</p>
           </div>
 
           <form onSubmit={handleSubmit(onChangePassword)} className="flex flex-col gap-4" noValidate>
@@ -120,15 +120,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
         </div>
 
         {/* Notification Preference */}
-        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 flex flex-col gap-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col gap-5">
           <div>
-            <h3 className="text-sm font-semibold text-white">Notification Preference</h3>
-            <p className="text-zinc-500 text-xs mt-0.5">Choose how you want to receive notifications</p>
+            <h3 className="text-sm font-semibold text-slate-900">Notification Preference</h3>
+            <p className="text-slate-600 text-xs mt-0.5">Choose how you want to receive notifications</p>
           </div>
 
           {prefLoading ? (
             <div className="h-10 flex items-center">
-              <span className="text-zinc-500 text-sm">Loading…</span>
+              <span className="text-slate-600 text-sm">Loading…</span>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
@@ -142,19 +142,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
                       'p-4 rounded-xl border text-left transition-all duration-150',
                       preferred === option
                         ? 'border-white/30 bg-white/5 ring-1 ring-white/20'
-                        : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
+                        : 'border-slate-200 bg-blue-50/50 hover:border-slate-300',
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span className={[
                         'w-2 h-2 rounded-full flex-shrink-0',
-                        preferred === option ? 'bg-white' : 'bg-zinc-600',
+                        preferred === option ? 'bg-blue-600' : 'bg-slate-300',
                       ].join(' ')} />
-                      <span className="text-white font-semibold text-xs uppercase tracking-wider">
+                      <span className="text-slate-900 font-semibold text-xs uppercase tracking-wider">
                         {option === 'in_app' ? 'In-App' : 'Email'}
                       </span>
                     </div>
-                    <p className="text-zinc-500 text-xs leading-snug">
+                    <p className="text-slate-600 text-xs leading-snug">
                       {option === 'email'
                         ? 'Receive notifications via email'
                         : 'Receive notifications inside the app'}

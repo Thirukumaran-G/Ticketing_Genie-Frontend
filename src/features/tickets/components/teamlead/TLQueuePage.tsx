@@ -23,7 +23,7 @@ const UnassignReasonBadge: React.FC<{ reason?: string; justification?: string }>
   return (
     <div className="mt-1 flex items-start gap-1.5">
       <span className="flex-shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-orange-400" />
-      <p className="text-[11px] text-orange-400 leading-snug">
+      <p className="text-xs text-orange-400 leading-snug">
         Agent unassigned
         {justification ? ` — "${justification.slice(0, 60)}${justification.length > 60 ? '…' : ''}"` : ''}
       </p>
@@ -37,19 +37,19 @@ const QueueRow: React.FC<{
   ticket: TicketQueueItem & { _unassign_reason?: string; _justification?: string };
   onAssign: (ticket: TicketQueueItem) => void;
 }> = ({ ticket, onAssign }) => (
-  <div className="flex items-center gap-4 px-6 py-4 border-b border-zinc-900 hover:bg-zinc-900/30 transition-colors">
+  <div className="flex items-center gap-4 px-6 py-4 border-b border-blue-100 hover:bg-slate-50/30 transition-colors">
     <div className={clsx('w-1 h-10 rounded-full flex-shrink-0', {
       'bg-red-500':    ticket.priority === 'P0',
       'bg-orange-500': ticket.priority === 'P1',
       'bg-yellow-500': ticket.priority === 'P2',
       'bg-blue-500':   ticket.priority === 'P3',
-      'bg-zinc-700':   !ticket.priority,
+      'bg-slate-300':   !ticket.priority,
     })} />
 
     <div className="flex-shrink-0 w-32">
       <Link
         to={`/tickets/teamlead/${ticket.id}`}
-        className="text-xs font-mono text-zinc-400 hover:text-white transition-colors"
+        className="text-xs font-mono text-slate-600 hover:text-slate-900 transition-colors"
       >
         {ticket.ticket_number}
       </Link>
@@ -59,13 +59,13 @@ const QueueRow: React.FC<{
       <div className="flex items-center gap-2 flex-wrap">
         <Link
           to={`/tickets/teamlead/${ticket.id}`}
-          className="text-sm text-white font-medium truncate hover:text-zinc-300"
+          className="text-sm text-slate-800 font-medium truncate hover:text-slate-600"
         >
           {ticket.title ?? '(No title)'}
         </Link>
         {ticket.sla_response_due && <SLABreachPill />}
       </div>
-      <p className="text-xs text-zinc-600 mt-0.5">
+      <p className="text-xs text-slate-600 mt-0.5">
         {format(new Date(ticket.created_at), 'MMM d, yyyy · h:mm a')}
       </p>
       {/* Show unassign reason if ticket was returned by agent */}
@@ -77,13 +77,13 @@ const QueueRow: React.FC<{
 
     <div className="flex-shrink-0 flex items-center gap-1.5">
       {ticket.severity && <SeverityDot severity={ticket.severity} />}
-      <span className="text-xs text-zinc-400 capitalize">{ticket.severity ?? '—'}</span>
+      <span className="text-xs text-slate-600 capitalize">{ticket.severity ?? '—'}</span>
     </div>
 
     <div className="flex-shrink-0 w-10 text-center">
       {ticket.priority
         ? <PriorityLabel priority={ticket.priority} />
-        : <span className="text-zinc-700 text-xs">—</span>
+        : <span className="text-slate-600 text-xs">—</span>
       }
     </div>
 
@@ -105,10 +105,10 @@ const NewTicketToast: React.FC<{ count: number; onView: () => void }> = ({ count
   <div className="flex items-center gap-3">
     <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse flex-shrink-0" />
     <div className="flex-1">
-      <p className="text-sm font-medium text-white">
+      <p className="text-sm font-medium text-slate-900">
         {count === 1 ? 'New unassigned ticket' : `${count} new unassigned tickets`}
       </p>
-      <p className="text-xs text-zinc-400">returned to your queue</p>
+      <p className="text-xs text-slate-600">returned to your queue</p>
     </div>
     <button
       onClick={onView}
@@ -162,7 +162,7 @@ export const TLQueuePage: React.FC = () => {
           toast.custom(
             (t) => (
               <div className={clsx(
-                'bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 shadow-2xl max-w-sm transition-all',
+                'bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 shadow-2xl max-w-sm transition-all',
                 t.visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
               )}>
                 <NewTicketToast
@@ -220,9 +220,9 @@ export const TLQueuePage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Unassigned Queue</h2>
+            <h2 className="text-2xl font-bold text-slate-900">Unassigned Queue</h2>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-zinc-500 text-sm">
+              <p className="text-slate-500 text-sm">
                 {tlQueue.length} waiting
                 {newCount > 0 && (
                   <span className="ml-2 inline-flex items-center gap-1 text-orange-400 font-medium">
@@ -266,17 +266,17 @@ export const TLQueuePage: React.FC = () => {
               .map((agent) => (
                 <div
                   key={agent.user_id}
-                  className="flex-shrink-0 flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2"
+                  className="flex-shrink-0 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
                 >
                   <div className={clsx('w-2 h-2 rounded-full flex-shrink-0', {
                     'bg-green-500':  agent.open_tickets <= 3,
                     'bg-yellow-500': agent.open_tickets > 3 && agent.open_tickets <= 7,
                     'bg-red-500':    agent.open_tickets > 7,
                   })} />
-                  <span className="text-xs text-zinc-400 font-mono">
+                  <span className="text-xs text-slate-600 font-mono">
                     {agent.user_id.slice(0, 8)}
                   </span>
-                  <span className="text-xs text-zinc-600">
+                  <span className="text-xs text-slate-600">
                     {agent.open_tickets} open
                   </span>
                 </div>
@@ -285,14 +285,14 @@ export const TLQueuePage: React.FC = () => {
         )}
 
         {/* Queue table */}
-        <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-4 px-6 py-3 border-b border-zinc-800 bg-zinc-900/40">
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+          <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-200 bg-blue-50/50">
             <div className="w-1 flex-shrink-0" />
-            <div className="flex-shrink-0 w-32 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Ticket #</div>
-            <div className="flex-1 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Issue</div>
-            <div className="flex-shrink-0 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Severity</div>
-            <div className="flex-shrink-0 w-10 text-center text-xs font-semibold text-zinc-500 uppercase tracking-widest">Pri</div>
-            <div className="flex-shrink-0 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Status</div>
+            <div className="flex-shrink-0 w-32 text-xs font-semibold text-blue-600 uppercase tracking-widest">Ticket #</div>
+            <div className="flex-1 text-xs font-semibold text-blue-600 uppercase tracking-widest">Issue</div>
+            <div className="flex-shrink-0 text-xs font-semibold text-blue-600 uppercase tracking-widest">Severity</div>
+            <div className="flex-shrink-0 w-10 text-center text-xs font-semibold text-blue-600 uppercase tracking-widest">Pri</div>
+            <div className="flex-shrink-0 text-xs font-semibold text-blue-600 uppercase tracking-widest">Status</div>
             <div className="flex-shrink-0 w-16" />
           </div>
 
@@ -300,11 +300,11 @@ export const TLQueuePage: React.FC = () => {
             <PageLoader />
           ) : tlQueue.length === 0 ? (
             <div className="text-center py-20">
-              <svg className="w-10 h-10 text-zinc-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-10 h-10 text-slate-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-zinc-500 text-sm">No unassigned tickets</p>
-              <p className="text-zinc-700 text-xs mt-1">New tickets will appear here automatically</p>
+              <p className="text-slate-500 text-sm">No unassigned tickets</p>
+              <p className="text-slate-600 text-xs mt-1">New tickets will appear here automatically</p>
             </div>
           ) : (
             tlQueue.map((t) => (
@@ -318,12 +318,12 @@ export const TLQueuePage: React.FC = () => {
       <Modal open={assignModal} onClose={() => setAssignModal(false)} title="Assign Ticket">
         {assignTicket && (
           <div className="space-y-4">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-              <p className="text-xs text-zinc-500 font-mono">{assignTicket.ticket_number}</p>
-              <p className="text-white text-sm font-medium mt-1">{assignTicket.title ?? '(No title)'}</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <p className="text-xs text-slate-600 font-mono">{assignTicket.ticket_number}</p>
+              <p className="text-slate-900 text-sm font-medium mt-1">{assignTicket.title ?? '(No title)'}</p>
               <div className="flex items-center gap-2 mt-2">
                 {assignTicket.severity && (
-                  <span className="text-xs text-zinc-500 capitalize">{assignTicket.severity}</span>
+                  <span className="text-xs text-slate-600 capitalize">{assignTicket.severity}</span>
                 )}
                 {assignTicket.priority && (
                   <PriorityLabel priority={assignTicket.priority} />
@@ -337,7 +337,7 @@ export const TLQueuePage: React.FC = () => {
               value={selectedAgent}
               onChange={(e) => setSelectedAgent(e.target.value)}
             />
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-slate-600">
               Agents sorted by current workload — choose the one with fewest open tickets for best balance.
             </p>
             <div className="flex gap-3 pt-2">

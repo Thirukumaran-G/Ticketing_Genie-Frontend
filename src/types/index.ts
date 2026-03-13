@@ -55,6 +55,7 @@ export interface CustomerTicketDetail extends CustomerTicketListItem {
   reopen_count: number;
   sla_breached_at?: string;
   response_sla_breached_at?: string;
+  assigned_to?: string;
 }
 
 export interface TicketQueueItem {
@@ -94,6 +95,9 @@ export interface TicketDetail extends TicketQueueItem {
 export interface TLTicketDetail extends TicketDetail {
   updated_at: string;
 }
+
+export interface RoleResponse { id: string; name: string; }
+
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 export interface NotificationItem {
@@ -138,13 +142,19 @@ export interface TicketThreadResponse {
   attachments: AttachmentItem[];
 }
 
+export interface NotificationPreference {
+  user_id: string;
+  preferred_contact: 'email' | 'in_app';
+}
+
 
 // ── Admin — Auth service ──────────────────────────────────────────────────────
 export interface CompanyResponse { id: string; name: string; is_active: boolean; }
-export interface ProductResponse { id: string; name: string; is_active: boolean; }
+export interface ProductResponse { id: string; name: string; is_active: boolean; code: string}
 export interface TierResponse { id: string; name: string; }
+export interface RoleResponse { id: string; name: string; }
 export interface SubscriptionResponse { id: string; company_id: string; product_id: string; tier_id: string; is_active: boolean; }
-export interface AdminUserResponse { id: string; email: string; role: string; is_active: boolean; company_id?: string; }
+export interface AdminUserResponse { id: string; full_name: string; email: string; role: string; is_active: boolean; company_id?: string; }
 
 // ── Admin — Ticket service ────────────────────────────────────────────────────
 export interface EmailConfigResponse { id: string; key: string; value?: string; is_secret: boolean; is_active: boolean; updated_at?: string; }

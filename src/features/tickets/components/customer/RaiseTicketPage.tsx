@@ -80,10 +80,10 @@ export const RaiseTicketPage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Raise a Support Ticket</h2>
-            <p className="text-zinc-500 text-sm mt-0.5">Describe your issue and our team will respond shortly</p>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Raise a Support Ticket</h2>
+            <p className="text-slate-500 text-sm mt-0.5">Describe your issue and our team will respond shortly</p>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
             Support team online
           </div>
@@ -93,8 +93,8 @@ export const RaiseTicketPage: React.FC = () => {
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-5">
 
           {/* Issue Details */}
-          <div className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6 flex flex-col gap-5">
-            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Issue Details</h3>
+          <div className="w-full bg-white border border-slate-200 rounded-2xl p-6 flex flex-col gap-5">
+            <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Issue Details</h3>
             <Input
               label="Title"
               placeholder="Brief summary of the issue…"
@@ -111,8 +111,8 @@ export const RaiseTicketPage: React.FC = () => {
           </div>
 
           {/* Classification */}
-          <div className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6 flex flex-col gap-5">
-            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Classification</h3>
+          <div className="w-full bg-white border border-slate-200 rounded-2xl p-6 flex flex-col gap-5">
+            <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Classification</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
@@ -132,7 +132,7 @@ export const RaiseTicketPage: React.FC = () => {
 
             {/* Severity */}
             <div className="flex flex-col gap-3">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Severity</label>
+              <label className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Severity</label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {SEVERITIES.map((level) => (
                   <button
@@ -143,14 +143,14 @@ export const RaiseTicketPage: React.FC = () => {
                       'p-3 rounded-xl border text-left transition-all duration-150',
                       severity === level
                         ? SEV_COLORS[level]
-                        : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
+                        : 'border-slate-200 bg-blue-50/50 hover:border-slate-300',
                     )}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', SEV_DOT[level])} />
-                      <span className="text-white font-semibold text-xs uppercase tracking-wider">{level}</span>
+                      <span className="text-slate-900 font-semibold text-xs uppercase tracking-wider">{level}</span>
                     </div>
-                    <p className="text-zinc-500 text-xs leading-snug">{SEV_DESC[level]}</p>
+                    <p className="text-slate-600 text-xs leading-snug">{SEV_DESC[level]}</p>
                   </button>
                 ))}
               </div>
@@ -162,7 +162,7 @@ export const RaiseTicketPage: React.FC = () => {
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-1">
-            <p className="text-xs text-zinc-600">All fields marked are required</p>
+            <p className="text-xs text-slate-600">All fields marked are required</p>
             <div className="flex gap-3">
               <Button type="button" variant="secondary" onClick={() => navigate('/tickets/mine')} size="lg">
                 Cancel

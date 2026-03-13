@@ -26,8 +26,8 @@ const notificationsSlice = createSlice({
     b.addCase(fetchNotifications.pending, (s) => { s.isLoading = true; });
     b.addCase(fetchNotifications.fulfilled, (s, a) => { s.isLoading = false; s.items = a.payload; });
     b.addCase(markReadThunk.fulfilled, (s, a) => {
-      const idx = s.items.findIndex((n) => n.id === a.payload.id);
-      if (idx !== -1) s.items[idx] = a.payload;
+    const idx = s.items.findIndex((n) => n.id === a.meta.arg); 
+    if (idx !== -1) s.items[idx].is_read = true;              
     });
   },
 });
