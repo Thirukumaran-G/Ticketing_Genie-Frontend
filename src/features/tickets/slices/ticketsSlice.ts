@@ -43,6 +43,7 @@ const apiErr = (e: unknown) =>
   (e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Error';
 
 // ── Customer thunks ───────────────────────────────────────────────────────────
+
 export const fetchMyTickets = createAsyncThunk(
   'tickets/fetchMyTickets',
   async (_, { rejectWithValue }) => {
@@ -59,18 +60,39 @@ export const fetchMyTicket = createAsyncThunk(
   },
 );
 
+/**
+ * createTicketThunk — now accepts an optional `files` array.
+ * Files are passed through to ticketsService.createTicket() which sends
+ * them as part of a single multipart/form-data request. The backend saves
+ * attachments synchronously before returning the 201 response.
+ *
+ * Usage:
+ *   dispatch(createTicketThunk({ title, description, product_id, customer_severity, files }))
+ */
 export const createTicketThunk = createAsyncThunk(
   'tickets/create',
   async (
-    payload: Parameters<typeof ticketsService.createTicket>[0],
+    payload: {
+      title: string;
+      description: string;
+      product_id: string;
+      customer_severity: 'critical' | 'high' | 'medium' | 'low';
+      environment?: string;
+      source?: string;
+      files?: File[];           // ← new: optional attachments
+    },
     { rejectWithValue },
   ) => {
-    try { return await ticketsService.createTicket(payload); }
-    catch (e) { return rejectWithValue(apiErr(e)); }
+    try {
+      return await ticketsService.createTicket(payload);
+    } catch (e) {
+      return rejectWithValue(apiErr(e));
+    }
   },
 );
 
 // ── Agent thunks ──────────────────────────────────────────────────────────────
+
 export const fetchAgentQueue = createAsyncThunk(
   'tickets/fetchAgentQueue',
   async (_, { rejectWithValue }) => {
@@ -107,6 +129,7 @@ export const fetchAgentAllTickets = createAsyncThunk(
 );
 
 // ── Team Lead thunks ──────────────────────────────────────────────────────────
+
 export const fetchTLQueue = createAsyncThunk(
   'tickets/fetchTLQueue',
   async (_, { rejectWithValue }) => {
@@ -156,6 +179,7 @@ export const fetchProducts = createAsyncThunk(
 );
 
 // ── Slice ─────────────────────────────────────────────────────────────────────
+
 const ticketsSlice = createSlice({
   name: 'tickets',
   initialState: init,
@@ -179,6 +203,8 @@ const ticketsSlice = createSlice({
       .addCase(fetchMyTicket.fulfilled, (s, a) => { s.isLoading = false; s.myTicketDetail = a.payload; })
       .addCase(fetchMyTicket.rejected, fail);
 
+    // createTicketThunk: files are ephemeral — no Redux state needed for them.
+    // isSubmitting drives the loading spinner on the form button.
     b.addCase(createTicketThunk.pending, (s) => { s.isSubmitting = true; s.error = null; })
       .addCase(createTicketThunk.fulfilled, (s) => { s.isSubmitting = false; })
       .addCase(createTicketThunk.rejected, (s, a) => { s.isSubmitting = false; s.error = a.payload as string; });

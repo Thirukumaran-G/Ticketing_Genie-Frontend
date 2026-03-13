@@ -22,7 +22,7 @@ export type Severity = typeof SEVERITIES[number];
 export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const;
 export type Priority = typeof PRIORITIES[number];
 
-export const TICKET_STATUSES = ['new', 'acknowledged', 'open', 'in_progress', 'resolved', 'closed'] as const;
+export const TICKET_STATUSES = ['new', 'acknowledged', 'open','on_hold', 'in_progress', 'resolved', 'closed'] as const;
 export type TicketStatus = typeof TICKET_STATUSES[number];
 
 export const DATE_FORMAT        = 'MMM d, yyyy';

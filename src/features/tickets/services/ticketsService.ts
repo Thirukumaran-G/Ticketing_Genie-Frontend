@@ -1,5 +1,3 @@
-
-
 import { ticketClient, authClient } from '../../../lib/axios';
 import { ENV } from '../../../config/env';
 import {
@@ -16,6 +14,12 @@ import {
 
 export const ticketsService = {
   // ── Customer routes ───────────────────────────────────────────────────────
+
+  /**
+   * Create a ticket via multipart/form-data.
+   * Files (up to 5) are uploaded atomically with the ticket fields in one request.
+   * The backend saves attachments synchronously before returning the 201.
+   */
   createTicket: (payload: {
     title: string;
     description: string;
@@ -23,10 +27,28 @@ export const ticketsService = {
     customer_severity: string;
     environment?: string;
     source?: string;
-  }) =>
-    ticketClient
-      .post<TicketCreateResponse>('/customer/tickets', payload)
-      .then((r) => r.data),
+    files?: File[];
+  }) => {
+    const form = new FormData();
+    form.append('title', payload.title);
+    form.append('description', payload.description);
+    form.append('product_id', payload.product_id);
+    form.append('customer_severity', payload.customer_severity);
+    if (payload.environment) form.append('environment', payload.environment);
+    form.append('source', payload.source ?? 'web');
+
+    // Attach each file under the same field name "files"
+    // FastAPI picks these up as List[UploadFile]
+    if (payload.files?.length) {
+      payload.files.forEach((file) => form.append('files', file));
+    }
+
+    return ticketClient
+      .post<TicketCreateResponse>('/customer/tickets', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
 
   listMyTickets: () =>
     ticketClient
@@ -38,7 +60,7 @@ export const ticketsService = {
       .get<CustomerTicketDetail>(`/customer/tickets/${ticketId}`)
       .then((r) => r.data),
 
-  // ── NEW: Customer — get assigned agent name ───────────────────────────────
+  // ── Customer — get assigned agent name ───────────────────────────────────
   getTicketAgentInfo: (ticketId: string) =>
     ticketClient
       .get<{ assigned: boolean; agent_name: string | null }>(`/customer/tickets/${ticketId}/agent`)
