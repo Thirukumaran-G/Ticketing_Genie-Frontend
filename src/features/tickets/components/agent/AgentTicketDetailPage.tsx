@@ -1,14 +1,14 @@
 // src/features/tickets/components/agent/AgentTicketDetailPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { MainLayout } from '../../../../layouts/MainLayout';
-import { Button, PageLoader, Select } from '../../../../components/ui/index';
+import { PageLoader } from '../../../../components/ui/index';
 import { StatusBadge, SeverityDot, PriorityLabel, SLABreachPill } from '../shared/TicketBadges';
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
-import { fetchAgentTicket, updateAgentStatusThunk } from '../../slices/ticketsSlice';
+import { fetchAgentTicket, updateAgentStatusThunk, fetchProducts } from '../../slices/ticketsSlice';
 import { ticketsService } from '../../services/ticketsService';
 import { agentNav } from './agentNav';
 import { TICKET_STATUSES } from '../../../../config';
@@ -67,10 +67,12 @@ function fileIcon(mime: string | null) {
   return '📄';
 }
 
-const INFO_STATUSES = TICKET_STATUSES.map(s => ({
-  value: s,
-  label: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-}));
+const INFO_STATUSES = TICKET_STATUSES
+  .filter(status => status !== 'closed' && status !== 'new' && status !== 'acknowledged' && status !== 'open')  
+  .map(s => ({
+    value: s,
+    label: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+  }));
 
 function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -81,7 +83,6 @@ function getInitials(name: string) {
 const AuthImage: React.FC<{ url: string; alt: string; className?: string }> = ({ url, alt, className }) => {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState(false);
-
   useEffect(() => {
     let obj: string;
     ticketClient.get(url, { responseType: 'blob' })
@@ -89,18 +90,17 @@ const AuthImage: React.FC<{ url: string; alt: string; className?: string }> = ({
       .catch(() => setErr(true));
     return () => { if (obj) URL.revokeObjectURL(obj); };
   }, [url]);
-
-  if (err) return <div className={clsx('flex items-center justify-center text-xs text-zinc-500 bg-zinc-800 rounded-xl', className)}>Failed</div>;
-  if (!src) return <div className={clsx('flex items-center justify-center bg-zinc-800 rounded-xl', className)}><div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" /></div>;
+  if (err) return <div className={clsx('flex items-center justify-center text-xs text-[#44546f] bg-[#f4f5f7] rounded', className)}>Failed</div>;
+  if (!src) return <div className={clsx('flex items-center justify-center bg-[#f4f5f7] rounded', className)}><div className="w-4 h-4 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" /></div>;
   return <img src={src} alt={alt} className={clsx('object-cover', className)} />;
 };
 
-// ── MetaRow ───────────────────────────────────────────────────────────────────
+// ── KV ────────────────────────────────────────────────────────────────────────
 
-const MetaRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="flex items-start justify-between gap-2 py-2.5 border-b border-zinc-900 last:border-0">
-    <span className="text-xs text-zinc-600 uppercase tracking-widest flex-shrink-0 pt-0.5">{label}</span>
-    <div className="text-right">{children}</div>
+const KV: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="flex items-center gap-3 min-h-[30px]">
+    <span className="w-28 flex-shrink-0 text-xs text-[#8993a4]">{label}</span>
+    <div className="flex-1 text-sm text-[#172b4d] min-w-0">{children}</div>
   </div>
 );
 
@@ -109,70 +109,37 @@ const MetaRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 const AiDraftPanel: React.FC<{ draft: string; onUse: (text: string) => void }> = ({ draft, onUse }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedDraft, setEditedDraft] = useState(draft);
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setEditedDraft(draft);
-  };
+  const handleCancel = () => { setIsEditing(false); setEditedDraft(draft); };
 
   return (
-    <div className="bg-zinc-950 border border-zinc-700 rounded-xl p-4">
+    <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-white flex items-center justify-center flex-shrink-0">
-            <svg className="w-2.5 h-2.5 text-black" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 12.094A5.973 5.973 0 004 15v1H1v-1a3 3 0 013.75-2.906z" />
-            </svg>
-          </div>
-          <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">AI Draft</p>
-        </div>
-
+        <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest">AI Draft</p>
         <div className="flex items-center gap-1.5">
-          {/* Edit / Cancel toggle */}
           <button
             onClick={isEditing ? handleCancel : () => setIsEditing(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white hover:border-zinc-500 transition-all"
+            className="px-3 py-1 rounded border border-[#dfe1e6] text-xs text-[#42526e] hover:bg-[#f4f5f7] transition-colors"
           >
-            {isEditing ? (
-              <>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Cancel
-              </>
-            ) : (
-              <>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Edit
-              </>
-            )}
+            {isEditing ? 'Cancel' : 'Edit'}
           </button>
-
-          {/* Use button */}
           <button
             onClick={() => onUse(editedDraft)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-600 border border-indigo-500 text-xs text-white hover:bg-indigo-500 transition-all"
+            className="px-3 py-1 rounded bg-[#0052cc] text-xs text-white hover:bg-[#0065ff] transition-colors"
           >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            Use
+            Use draft
           </button>
         </div>
       </div>
-
       {isEditing ? (
         <textarea
           value={editedDraft}
           onChange={e => setEditedDraft(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-xs text-zinc-200 leading-relaxed resize-none outline-none focus:border-zinc-500 transition-colors"
+          className="w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] resize-none outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
           style={{ minHeight: '220px' }}
           autoFocus
         />
       ) : (
-        <p className="text-zinc-400 text-xs leading-relaxed whitespace-pre-wrap border-l-2 border-zinc-700 pl-3">
+        <p className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap border-l-2 border-[#dfe1e6] pl-3">
           {editedDraft}
         </p>
       )}
@@ -180,83 +147,129 @@ const AiDraftPanel: React.FC<{ draft: string; onUse: (text: string) => void }> =
   );
 };
 
-// ── Bubbles ────────────────────────────────────────────────────────────────────
+// ── UnassignModal ─────────────────────────────────────────────────────────────
 
-const TextBubble: React.FC<{ item: ConversationItem; customerName: string }> = ({ item, customerName }) => {
-  const isAgent = item.author_type === 'agent';
-  const isInternal = item.is_internal;
+const UnassignModal: React.FC<{
+  ticketNumber: string;
+  onConfirm: (justification: string) => void;
+  onCancel: () => void;
+  loading: boolean;
+}> = ({ ticketNumber, onConfirm, onCancel, loading }) => {
+  const [justification, setJustification] = useState('');
+  const MIN_CHARS = 20;
+  const remaining = MIN_CHARS - justification.trim().length;
 
   return (
-    <div className={clsx('flex gap-2.5', isAgent ? 'flex-row-reverse' : 'flex-row')}>
-      <div className={clsx(
-        'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5',
-        isAgent
-          ? isInternal ? 'bg-amber-800 text-amber-200' : 'bg-indigo-600 text-white'
-          : 'bg-zinc-700 text-zinc-300'
-      )}>
-        {isAgent ? 'You' : getInitials(customerName)}
-      </div>
-      <div className={clsx('flex flex-col gap-1 max-w-[78%]', isAgent ? 'items-end' : 'items-start')}>
-        {isInternal && (
-          <span className="text-[10px] text-amber-500 font-medium px-1 flex items-center gap-1">
-            <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-            </svg>
-            Internal note
-          </span>
-        )}
-        <div className={clsx(
-          'px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words',
-          isAgent
-            ? isInternal
-              ? 'bg-amber-950/50 border border-amber-900/50 text-amber-100 rounded-2xl rounded-tr-sm'
-              : 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm'
-            : 'bg-zinc-800/80 border border-zinc-700/60 text-zinc-200 rounded-2xl rounded-tl-sm'
-        )}>
-          {item.content}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded border border-[#dfe1e6] shadow-lg w-full max-w-md mx-4 overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#dfe1e6]">
+          <h3 className="text-sm font-semibold text-[#172b4d]">Unassign from ticket</h3>
+          <p className="text-xs text-[#6b778c] mt-0.5 font-mono">{ticketNumber}</p>
         </div>
-        <span className="text-[11px] text-zinc-600 px-1">
-          {isAgent ? (isInternal ? 'Internal · ' : 'You · ') : `${customerName} · `}
-          {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-        </span>
+        <div className="px-6 py-5">
+          <p className="text-sm text-[#42526e] mb-4 leading-relaxed">
+            This ticket will return to the unassigned queue and your team lead will be notified immediately. Please provide a clear reason so the ticket can be reassigned appropriately.
+          </p>
+          <label className="block text-xs font-semibold text-[#6b778c] uppercase tracking-wide mb-1.5">
+            Justification <span className="text-[#de350b]">*</span>
+          </label>
+          <textarea
+            value={justification}
+            onChange={e => setJustification(e.target.value)}
+            placeholder="e.g. This issue requires database-level access I don't have. Escalating to backend team…"
+            rows={4}
+            autoFocus
+            className="w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] placeholder:text-[#8993a4] resize-none outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
+          />
+          {remaining > 0 && (
+            <p className="text-xs text-[#8993a4] mt-1">Minimum {MIN_CHARS} characters — {remaining} more needed</p>
+          )}
+        </div>
+        <div className="px-6 py-3.5 border-t border-[#dfe1e6] bg-[#f4f5f7] flex items-center justify-end gap-2">
+          <button onClick={onCancel} disabled={loading} className="h-8 px-4 rounded text-sm text-[#42526e] hover:bg-[#ebecf0] transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(justification)}
+            disabled={loading || remaining > 0}
+            className="h-8 px-4 rounded bg-[#ff991f] hover:bg-[#ff8b00] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            {loading && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+            Unassign ticket
+          </button>
+        </div>
       </div>
     </div>
   );
 };
 
-const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; customerName: string }> = ({
-  att, ticketId, customerName,
-}) => {
-  const url = ticketsService.getAgentAttachmentUrl(ticketId, att.id);
+// ── Thread bubbles ────────────────────────────────────────────────────────────
+
+const TextBubble: React.FC<{ item: ConversationItem; customerName: string }> = ({ item, customerName }) => {
+  const isAgent    = item.author_type === 'agent';
+  const isInternal = item.is_internal;
+  const displayName = isAgent ? 'You' : customerName;
+  const initials    = isAgent ? 'Y' : getInitials(customerName);
+
+  return (
+    <div className="flex gap-3 py-4">
+      <div className={clsx(
+        'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 select-none mt-0.5',
+        isAgent ? (isInternal ? 'bg-[#ff991f] text-white' : 'bg-[#0052cc] text-white') : 'bg-[#dfe1e6] text-[#44546f]'
+      )}>
+        {initials}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-1">
+          <span className="text-[#172b4d] text-sm font-semibold">{displayName}</span>
+          {isInternal && (
+            <span className="text-[10px] font-medium text-[#ff991f] bg-[#fff7e6] border border-[#ffe2a8] px-1.5 py-0.5 rounded">
+              Internal note
+            </span>
+          )}
+          <span className="text-[#8993a4] text-xs">{formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}</span>
+        </div>
+        <div className={clsx(
+          'text-sm leading-relaxed whitespace-pre-wrap text-[#172b4d]',
+          isInternal && 'bg-[#fff7e6] border border-[#ffe2a8] rounded px-3 py-2'
+        )}>
+          {item.content}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; customerName: string }> = ({ att, ticketId, customerName }) => {
+  const url   = ticketsService.getAgentAttachmentUrl(ticketId, att.id);
   const isImg = IMAGE_TYPES.has(att.mime_type ?? '');
 
   return (
-    <div className="flex gap-2.5 flex-row">
-      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5 bg-zinc-700 text-zinc-300">
+    <div className="flex gap-3 py-4">
+      <div className="w-8 h-8 rounded-full bg-[#dfe1e6] flex items-center justify-center text-xs font-bold text-[#44546f] flex-shrink-0 select-none mt-0.5">
         {getInitials(customerName)}
       </div>
-      <div className="flex flex-col gap-1 items-start">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-1">
+          <span className="text-[#172b4d] text-sm font-semibold">{customerName}</span>
+          <span className="text-[#8993a4] text-xs">{formatDistanceToNow(new Date(att.created_at), { addSuffix: true })}</span>
+        </div>
         {isImg ? (
-          <a href={url} target="_blank" rel="noreferrer"
-            className="block rounded-xl overflow-hidden border border-zinc-700/60 hover:border-zinc-500 transition-colors">
-            <AuthImage url={url} alt={att.file_name} className="w-52 h-52" />
+          <a href={url} target="_blank" rel="noreferrer" className="inline-block border border-[#dfe1e6] rounded overflow-hidden hover:border-[#0052cc] transition-colors">
+            <AuthImage url={url} alt={att.file_name} className="w-44 h-44" />
           </a>
         ) : (
-          <a href={url} target="_blank" rel="noreferrer"
-            className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-zinc-800/80 border border-zinc-700/60 hover:border-zinc-500 text-zinc-200 transition-all">
-            <span className="text-lg">{fileIcon(att.mime_type)}</span>
+          <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-3 px-3 py-2.5 bg-[#f4f5f7] border border-[#dfe1e6] rounded hover:bg-[#ebecf0] hover:border-[#b3bac5] transition-all group">
+            <div className="w-8 h-8 bg-white border border-[#dfe1e6] rounded flex items-center justify-center text-base flex-shrink-0">{fileIcon(att.mime_type)}</div>
             <div className="min-w-0">
-              <p className="text-sm truncate max-w-[140px]">{att.file_name}</p>
-              {att.file_size && <p className="text-[11px] text-zinc-500">{formatBytes(att.file_size)}</p>}
+              <p className="text-sm text-[#172b4d] font-medium truncate max-w-[200px] group-hover:text-[#0052cc] transition-colors">{att.file_name}</p>
+              {att.file_size && <p className="text-xs text-[#8993a4] mt-0.5">{formatBytes(att.file_size)}</p>}
             </div>
-            <svg className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-[#8993a4] flex-shrink-0 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
           </a>
         )}
-        <span className="text-[11px] text-zinc-600 px-1">
-          {customerName} · {formatDistanceToNow(new Date(att.created_at), { addSuffix: true })}
-        </span>
       </div>
     </div>
   );
@@ -266,62 +279,75 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; custom
 
 export const AgentTicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
-  const dispatch = useAppDispatch();
-  const { agentTicketDetail, isLoading } = useAppSelector((s) => s.tickets);
+  const navigate     = useNavigate();
+  const dispatch     = useAppDispatch();
+  const { agentTicketDetail, isLoading, products } = useAppSelector((s) => s.tickets);
 
-  const [thread, setThread]               = useState<ThreadData | null>(null);
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [customerInfo, setCustomerInfo]   = useState<CustomerInfo | null>(null);
-  const [commentText, setCommentText]     = useState('');
-  const [commentError, setCommentError]   = useState('');
-  const [sending, setSending]             = useState(false);
-  const [isInternal, setIsInternal]       = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [statusReason, setStatusReason]     = useState('');
-  const [showReasonInput, setShowReasonInput] = useState(false);
-
+  const [thread, setThread]                       = useState<ThreadData | null>(null);
+  const [threadLoading, setThreadLoading]         = useState(false);
+  const [customerInfo, setCustomerInfo]           = useState<CustomerInfo | null>(null);
+  const [commentText, setCommentText]             = useState('');
+  const [commentError, setCommentError]           = useState('');
+  const [sending, setSending]                     = useState(false);
+  const [isInternal, setIsInternal]               = useState(false);
+  const [selectedStatus, setSelectedStatus]       = useState('');
+  const [updatingStatus, setUpdatingStatus]       = useState(false);
+  const [statusReason, setStatusReason]           = useState('');
+  const [showReasonInput, setShowReasonInput]     = useState(false);
+  const [showUnassignModal, setShowUnassignModal] = useState(false);
+  const [unassigning, setUnassigning]             = useState(false);
+  const [enhancing, setEnhancing]                 = useState(false);
+  const [commentFocused, setCommentFocused]       = useState(false);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
 
   const customerName = customerInfo?.full_name || 'Customer';
+  const productName  = agentTicketDetail?.product_id
+    ? products.find(p => p.id === String(agentTicketDetail.product_id))?.name ?? null
+    : null;
 
   const loadThread = async () => {
     if (!ticketId) return;
-    try {
-      setThreadLoading(true);
-      setThread(await ticketsService.getAgentThread(ticketId));
-    } catch { /* silent */ }
-    finally { setThreadLoading(false); }
+    try { 
+      setThreadLoading(true); 
+      setThread(await ticketsService.getAgentThread(ticketId)); 
+    } catch { 
+      /* silent */ 
+    } finally { 
+      setThreadLoading(false); 
+    }
   };
 
   const loadCustomerInfo = async () => {
     if (!ticketId) return;
-    try {
-      const info = await ticketsService.getTicketCustomerInfo(ticketId);
-      setCustomerInfo(info);
-    } catch { /* non-critical */ }
+    try { 
+      const info = await ticketsService.getTicketCustomerInfo(ticketId); 
+      setCustomerInfo(info); 
+    } catch { 
+      /* non-critical */ 
+    }
   };
 
   useEffect(() => {
-    if (ticketId) {
-      dispatch(fetchAgentTicket(ticketId));
-      loadThread();
-      loadCustomerInfo();
+    if (ticketId) { 
+      dispatch(fetchAgentTicket(ticketId)); 
+      loadThread(); 
+      loadCustomerInfo(); 
     }
+    if (!products.length) dispatch(fetchProducts());
   }, [ticketId]);
 
-  useEffect(() => {
-    if (agentTicketDetail) setSelectedStatus(agentTicketDetail.status);
+  useEffect(() => { 
+    if (agentTicketDetail) setSelectedStatus(agentTicketDetail.status); 
   }, [agentTicketDetail]);
-
-  useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  
+  useEffect(() => { 
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); 
   }, [thread]);
-
-  useEffect(() => {
-    setShowReasonInput(['resolved', 'closed', 'on_hold'].includes(selectedStatus));
+  
+  useEffect(() => { 
+    setShowReasonInput(['resolved', 'closed', 'on_hold'].includes(selectedStatus)); 
   }, [selectedStatus]);
 
   const merged: ThreadEntry[] = thread
@@ -333,18 +359,24 @@ export const AgentTicketDetailPage: React.FC = () => {
 
   const onComment = async () => {
     if (!ticketId) return;
-    if (!commentText.trim()) { setCommentError('Cannot be empty'); return; }
+    if (!commentText.trim()) { 
+      setCommentError('Cannot be empty'); 
+      return; 
+    }
     try {
-      setSending(true); setCommentError('');
+      setSending(true); 
+      setCommentError('');
       await ticketsService.postAgentComment(ticketId, commentText, isInternal);
       setCommentText('');
-      // Reset textarea height
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
       toast.success(isInternal ? 'Note saved' : 'Reply sent');
       loadThread();
       dispatch(fetchAgentTicket(ticketId));
-    } catch { toast.error('Failed to post'); }
-    finally { setSending(false); }
+    } catch { 
+      toast.error('Failed to post'); 
+    } finally { 
+      setSending(false); 
+    }
   };
 
   const onStatusUpdate = async () => {
@@ -357,17 +389,17 @@ export const AgentTicketDetailPage: React.FC = () => {
       dispatch(fetchAgentTicket(ticketId));
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? 'Failed to update status');
-    } finally { setUpdatingStatus(false); }
+    } finally { 
+      setUpdatingStatus(false); 
+    }
   };
 
-  // Called by AiDraftPanel when agent hits "Use"
   const handleUseDraft = (text: string) => {
     setCommentText(text);
     setIsInternal(false);
     setTimeout(() => {
       if (!textareaRef.current) return;
       textareaRef.current.focus();
-      // Reset + re-grow height to match pasted content
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
       const len = text.length;
@@ -376,264 +408,334 @@ export const AgentTicketDetailPage: React.FC = () => {
     toast.success('Draft pasted — edit and send');
   };
 
+  const handleUnassignConfirm = async (justification: string) => {
+    if (!ticketId) return;
+    try {
+      setUnassigning(true);
+      await ticketsService.unassignTicket(ticketId, justification);
+      toast.success('Ticket unassigned — team lead notified');
+      setShowUnassignModal(false);
+      navigate('/tickets/agent/all');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to unassign ticket');
+    } finally { 
+      setUnassigning(false); 
+    }
+  };
+
+  const handleEnhance = async () => {
+    if (!commentText.trim()) { 
+      toast.error('Write something first before enhancing'); 
+      return; 
+    }
+    try {
+      setEnhancing(true);
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: `You are a support agent writing assistant. Take the following draft reply and improve it:\n- Fix grammar, spelling, and punctuation\n- Make the tone warm, empathetic, and professional — as if you genuinely care about the customer's issue\n- Keep the original meaning and information intact — do NOT add new technical details or promises\n- Keep it concise and direct\n- Output ONLY the improved reply text, nothing else — no preamble, no explanation\n\nDraft reply:\n${commentText}`,
+          }],
+        }),
+      });
+      const data = await response.json();
+      const improved = data?.content?.[0]?.text ?? '';
+      if (!improved) { 
+        toast.error('Enhancement failed — try again'); 
+        return; 
+      }
+      setCommentText(improved);
+      setTimeout(() => {
+        if (!textareaRef.current) return;
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      }, 30);
+      toast.success('Reply enhanced ✨');
+    } catch { 
+      toast.error('Enhancement failed — try again'); 
+    } finally { 
+      setEnhancing(false); 
+    }
+  };
+
   if (isLoading || !agentTicketDetail) {
     return <MainLayout navItems={agentNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
   }
 
   const t = agentTicketDetail;
 
+  const col1: { label: string; node: React.ReactNode }[] = [
+    { label: 'Status',   node: <StatusBadge status={t.status} /> },
+    ...(t.priority      ? [{ label: 'Priority',      node: <PriorityLabel priority={t.priority} /> }] : []),
+    ...(t.severity      ? [{ label: 'Severity',      node: <span className="flex items-center gap-1.5"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span> }] : []),
+    ...(t.tier_snapshot ? [{ label: 'Tier',          node: <span>{t.tier_snapshot}</span> }] : []),
+  ];
+
+  const col2: { label: string; node: React.ReactNode }[] = [
+    ...(productName        ? [{ label: 'Product',        node: <span>{productName}</span> }] : []),
+    ...(t.environment      ? [{ label: 'Environment',    node: <span className="capitalize">{t.environment}</span> }] : []),
+    ...(t.source           ? [{ label: 'Source',         node: <span className="capitalize">{t.source}</span> }] : []),
+    ...(t.customer_priority ? [{ label: 'Cust. priority', node: <span className="capitalize">{t.customer_priority}</span> }] : []),
+  ];
+
+  const col3: { label: string; node: React.ReactNode }[] = [
+    { label: 'Raised',   node: <span>{format(new Date(t.created_at), 'MMM d, yyyy')}</span> },
+    { label: 'Reopens',  node: <span>{t.reopen_count}</span> },
+    ...(t.sla_response_due ? [{
+      label: 'Response due',
+      node: <span className={clsx(t.response_sla_breached_at ? 'text-[#de350b]' : '')}>
+        {format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
+        {t.response_sla_breached_at && <span className="ml-1 text-[10px] text-[#de350b]">Breached</span>}
+      </span>,
+    }] : []),
+    ...(t.sla_resolve_due ? [{
+      label: 'Resolve due',
+      node: <span className={clsx(t.sla_breached_at ? 'text-[#de350b]' : '')}>
+        {format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
+        {t.sla_breached_at && <span className="ml-1 text-[10px] text-[#de350b]">Breached</span>}
+      </span>,
+    }] : []),
+    ...(t.first_response_at ? [{ label: 'First response', node: <span>{format(new Date(t.first_response_at), 'MMM d, h:mm a')}</span> }] : []),
+    ...(t.resolved_at ? [{ label: 'Resolved', node: <span>{format(new Date(t.resolved_at), 'MMM d, h:mm a')}</span> }] : []),
+  ];
+
   return (
     <MainLayout navItems={agentNav} pageTitle={t.ticket_number}>
-      <div className="flex flex-col h-[calc(100vh-56px)]">
+      {showUnassignModal && (
+        <UnassignModal
+          ticketNumber={t.ticket_number}
+          onConfirm={handleUnassignConfirm}
+          onCancel={() => setShowUnassignModal(false)}
+          loading={unassigning}
+        />
+      )}
 
-        {/* Back */}
-        <div className="px-5 pt-4 pb-3 flex-shrink-0">
-          <Link to="/tickets/agent/all" className="inline-flex items-center gap-2 text-zinc-500 hover:text-white text-sm transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Queue
-          </Link>
-        </div>
-
-        <div className="flex flex-1 gap-4 px-5 pb-5 min-h-0 overflow-hidden">
-
-          {/* ── LEFT: Conversation ── */}
-          <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
-
-            {/* Header */}
-            <div className="px-5 py-3.5 border-b border-zinc-800 flex-shrink-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-xs font-mono text-zinc-600">{t.ticket_number}</span>
-                <StatusBadge status={t.status} />
+      {/* Fixed height container - takes full viewport height minus header */}
+      <div className="h-[calc(100vh-56px)] bg-[#f4f5f7] overflow-hidden">
+        <div className="h-full overflow-y-auto">
+          <div className="py-5 px-5 space-y-3">
+            
+            {/* Title row */}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[#44546f] text-xs font-mono mb-0.5">{t.ticket_number}</p>
+                <h1 className="text-[#172b4d] text-xl font-semibold leading-snug">{t.title ?? '(No title)'}</h1>
+                {customerInfo && (
+                  <p className="text-[#6b778c] text-xs mt-1">
+                    {customerInfo.full_name}
+                    {customerInfo.email && <span className="ml-1.5 text-[#8993a4]">· {customerInfo.email}</span>}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {(t.sla_breached_at || t.response_sla_breached_at) && <SLABreachPill />}
-                <h1 className="text-sm font-semibold text-white ml-1 truncate">{t.title ?? '(No title)'}</h1>
+                <StatusBadge status={t.status} />
               </div>
+            </div>
 
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[9px] font-bold text-zinc-300">
-                    {getInitials(customerName)}
-                  </div>
-                  <span className="text-xs text-zinc-400 font-medium">{customerName}</span>
-                  {customerInfo?.email && (
-                    <span className="text-xs text-zinc-600">· {customerInfo.email}</span>
-                  )}
+            {/* Details - 3 columns */}
+            <div className="bg-white border border-[#dfe1e6] rounded px-5 py-3">
+              <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-2">Details</p>
+              <div className="grid grid-cols-3 gap-0">
+                <div className="flex flex-col gap-0.5 pr-6">
+                  {col1.map((kv, i) => <KV key={i} label={kv.label}>{kv.node}</KV>)}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5 text-[11px] text-zinc-600">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> You
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-zinc-600">
-                    <span className="w-2 h-2 rounded-full bg-zinc-500 inline-block" /> {customerName}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-zinc-600">
-                    <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" /> Internal
-                  </span>
+                <div className="flex flex-col gap-0.5 px-6 border-x border-[#ebecf0]">
+                  {col2.map((kv, i) => <KV key={i} label={kv.label}>{kv.node}</KV>)}
+                </div>
+                <div className="flex flex-col gap-0.5 pl-6">
+                  {col3.map((kv, i) => <KV key={i} label={kv.label}>{kv.node}</KV>)}
                 </div>
               </div>
             </div>
 
-            {/* Thread */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-              {threadLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
-                </div>
-              ) : merged.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <div className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-6 h-6 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm text-zinc-500">No messages yet</p>
-                  <p className="text-xs text-zinc-700 mt-1">Post the first reply below.</p>
-                </div>
-              ) : (
-                merged.map(entry =>
-                  entry.kind === 'message'
-                    ? <TextBubble key={`m-${entry.data.id}`} item={entry.data} customerName={customerName} />
-                    : <AttachmentBubble key={`a-${entry.data.id}`} att={entry.data} ticketId={t.id} customerName={customerName} />
-                )
-              )}
-              <div ref={threadEndRef} />
-            </div>
-
-            {/* Composer */}
-            <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-zinc-900">
-              <div className="flex items-center gap-1 p-1 bg-zinc-900 rounded-lg w-fit mb-3">
-                <button
-                  onClick={() => setIsInternal(false)}
-                  className={clsx(
-                    'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-                    !isInternal ? 'bg-indigo-600 text-white' : 'text-zinc-500 hover:text-zinc-300'
-                  )}
-                >
-                  Reply to Customer
-                </button>
-                <button
-                  onClick={() => setIsInternal(true)}
-                  className={clsx(
-                    'px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5',
-                    isInternal ? 'bg-amber-800 text-amber-100' : 'text-zinc-500 hover:text-zinc-300'
-                  )}
-                >
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            {/* Description */}
+            <div className="bg-white border border-[#dfe1e6] rounded px-5 py-3">
+              <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-2">Description</p>
+              {t.priority_overridden && t.override_reason && (
+                <div className="flex items-start gap-2 px-3 py-2 bg-[#fff7e6] border border-[#ffe2a8] rounded mb-2">
+                  <svg className="w-4 h-4 text-[#ff991f] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                   </svg>
-                  Internal Note
+                  <p className="text-xs text-[#172b4d]"><span className="font-semibold text-[#ff991f]">Priority override:</span> {t.override_reason}</p>
+                </div>
+              )}
+              <p className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">
+                {t.description ?? <span className="text-[#8993a4] italic">No description provided.</span>}
+              </p>
+            </div>
+
+            {/* AI Draft */}
+            {t.ai_draft && <AiDraftPanel draft={t.ai_draft} onUse={handleUseDraft} />}
+
+            {/* Update Status */}
+            <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
+              <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Update status</p>
+              <div className="flex items-start gap-3">
+                <select
+                  value={selectedStatus}
+                  onChange={e => setSelectedStatus(e.target.value)}
+                  className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
+                >
+                  {INFO_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+                <button
+                  onClick={onStatusUpdate}
+                  disabled={updatingStatus || selectedStatus === t.status}
+                  className="h-8 px-4 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                >
+                  {updatingStatus && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+                  Apply & notify customer
                 </button>
+              </div>
+              {showReasonInput && (
+                <textarea
+                  value={statusReason}
+                  onChange={e => setStatusReason(e.target.value)}
+                  placeholder="Add a note for the customer (optional)…"
+                  rows={2}
+                  className="mt-2 w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] placeholder:text-[#8993a4] resize-none outline-none focus:border-[#4c9aff] transition-colors"
+                />
+              )}
+              <p className="text-xs text-[#8993a4] mt-1.5">Customer will receive an email on status change.</p>
+            </div>
+
+            {/* Activity Section */}
+            <div className="bg-white border border-[#dfe1e6] rounded flex flex-col overflow-hidden">
+              
+              {/* Activity Header */}
+              <div className="px-6 pt-4 pb-2 flex-shrink-0 flex items-center justify-between">
+                <h3 className="text-[#172b4d] text-sm font-semibold">Activity</h3>
+                <div className="flex items-center gap-3 text-xs text-[#8993a4]">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#0052cc] inline-block" /> You</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#dfe1e6] inline-block" /> {customerName}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#ff991f] inline-block" /> Internal</span>
+                </div>
               </div>
 
-              {commentError && <p className="text-xs text-red-400 mb-1.5 px-1">{commentError}</p>}
-              <div className={clsx(
-                'flex items-start gap-2 border rounded-xl px-4 py-3 transition-colors',
-                isInternal
-                  ? 'bg-amber-950/20 border-amber-900/40 focus-within:border-amber-700/60'
-                  : 'bg-zinc-900 border-zinc-800 focus-within:border-zinc-600'
-              )}>
-                <textarea
-                  ref={textareaRef}
-                  value={commentText}
-                  onChange={e => {
-                    setCommentText(e.target.value);
-                    setCommentError('');
-                    e.target.style.height = 'auto';
-                    e.target.style.height = `${e.target.scrollHeight}px`;
-                  }}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onComment(); } }}
-                  placeholder={isInternal ? 'Internal note — only visible to agents…' : 'Write your response to the customer…'}
-                  rows={3}
-                  className="flex-1 bg-transparent text-sm text-zinc-200 placeholder:text-zinc-600 resize-none outline-none leading-relaxed w-full"
-                  style={{ minHeight: '72px', maxHeight: '400px', overflowY: 'auto' }}
-                />
-                <button
-                  type="button"
-                  onClick={onComment}
-                  disabled={sending || !commentText.trim()}
-                  className={clsx(
-                    'flex-shrink-0 p-1.5 rounded-lg text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-0.5',
-                    isInternal ? 'bg-amber-700 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-500'
+              {/* Composer */}
+              <div className="px-6 pb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1 p-0.5 bg-[#f4f5f7] rounded border border-[#dfe1e6]">
+                    <button
+                      onClick={() => setIsInternal(false)}
+                      className={clsx(
+                        'px-3 py-1 rounded text-xs font-medium transition-colors',
+                        !isInternal ? 'bg-white text-[#0052cc] border border-[#dfe1e6] shadow-sm' : 'text-[#6b778c] hover:text-[#172b4d]'
+                      )}
+                    >
+                      Reply to customer
+                    </button>
+                    <button
+                      onClick={() => setIsInternal(true)}
+                      className={clsx(
+                        'px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1',
+                        isInternal ? 'bg-[#fff7e6] text-[#ff991f] border border-[#ffe2a8]' : 'text-[#6b778c] hover:text-[#172b4d]'
+                      )}
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                      Internal note
+                    </button>
+                  </div>
+                  {!isInternal && commentText.trim().length > 0 && (
+                    <button
+                      onClick={handleEnhance}
+                      disabled={enhancing}
+                      className="h-7 px-3 rounded border border-[#dfe1e6] text-xs text-[#6b778c] hover:border-[#b3bac5] hover:text-[#172b4d] transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {enhancing
+                        ? <div className="w-3 h-3 border border-[#6b778c] border-t-transparent rounded-full animate-spin" />
+                        : <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                      }
+                      {enhancing ? 'Enhancing…' : 'Enhance'}
+                    </button>
                   )}
-                >
-                  {sending
-                    ? <div className="w-4 h-4 border border-white/40 border-t-white rounded-full animate-spin" />
-                    : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                  }
-                </button>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#0052cc] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">Y</div>
+                  <div className="flex-1 min-w-0">
+                    <div className={clsx(
+                      'rounded border bg-white transition-all overflow-hidden',
+                      commentFocused
+                        ? isInternal ? 'border-[#ff991f] shadow-[0_0_0_1px_#ff991f]' : 'border-[#0052cc] shadow-[0_0_0_1px_#0052cc]'
+                        : 'border-[#dfe1e6] hover:border-[#b3bac5]',
+                    )}>
+                      <textarea
+                        ref={textareaRef}
+                        value={commentText}
+                        onFocus={() => setCommentFocused(true)}
+                        onChange={e => {
+                          setCommentText(e.target.value);
+                          setCommentError('');
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${e.target.scrollHeight}px`;
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onComment(); } }}
+                        placeholder={isInternal ? 'Internal note — only visible to agents…' : 'Write your response to the customer…'}
+                        rows={commentFocused ? 3 : 1}
+                        className="w-full text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-transparent px-3 py-2.5 resize-none outline-none leading-relaxed"
+                        style={{ maxHeight: '400px', overflowY: 'auto' }}
+                      />
+                    </div>
+                    {commentError && <p className="text-xs text-[#de350b] mt-1">{commentError}</p>}
+                    {commentFocused && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={onComment}
+                          disabled={sending || !commentText.trim()}
+                          className="px-3 py-1.5 rounded bg-[#0052cc] text-white text-sm font-medium hover:bg-[#0065ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                        >
+                          {sending && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+                          {isInternal ? 'Save note' : 'Send reply'}
+                        </button>
+                        <button
+                          onClick={() => { setCommentText(''); setCommentError(''); setCommentFocused(false); }}
+                          className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <span className="ml-auto text-xs text-[#8993a4]">
+                          <kbd className="border border-[#dfe1e6] bg-[#f4f5f7] rounded px-1 py-0.5 text-[10px]">Enter</kbd> to send
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <p className="text-[11px] text-zinc-700 mt-1.5 px-1">Enter to send · Shift+Enter for new line</p>
+
+              {merged.length > 0 && <div className="border-t border-[#ebecf0]" />}
+
+              {/* Thread */}
+              <div className="max-h-[400px] overflow-y-auto px-6">
+                {threadLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-5 h-5 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : merged.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <p className="text-[#8993a4] text-sm">No messages yet on this ticket.</p>
+                    <p className="text-[#c1c7d0] text-xs mt-1">Post the first reply above.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#f0f1f3]">
+                    {merged.map(entry =>
+                      entry.kind === 'message'
+                        ? <TextBubble key={`m-${entry.data.id}`} item={entry.data} customerName={customerName} />
+                        : <AttachmentBubble key={`a-${entry.data.id}`} att={entry.data} ticketId={t.id} customerName={customerName} />
+                    )}
+                  </div>
+                )}
+                <div ref={threadEndRef} />
+              </div>
             </div>
           </div>
-
-          {/* ── RIGHT: Details panel ── */}
-          <div className="w-96 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
-
-              {/* Update Status */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-3">Update Status</p>
-                <Select options={INFO_STATUSES} value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} />
-                {showReasonInput && (
-                  <textarea
-                    value={statusReason}
-                    onChange={e => setStatusReason(e.target.value)}
-                    placeholder="Add a note for the customer (optional)…"
-                    rows={2}
-                    className="mt-2 w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 placeholder:text-zinc-600 resize-none outline-none focus:border-zinc-600 transition-colors"
-                  />
-                )}
-                <Button
-                  size="sm"
-                  full
-                  className="mt-3"
-                  loading={updatingStatus}
-                  disabled={selectedStatus === t.status}
-                  onClick={onStatusUpdate}
-                >
-                  Apply & Notify Customer
-                </Button>
-                <p className="text-[10px] text-zinc-700 mt-1.5">Customer will receive an email on status change.</p>
-              </div>
-
-              {/* Ticket meta */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-3">Ticket Info</p>
-                {t.severity && (
-                  <MetaRow label="Severity">
-                    <span className="flex items-center gap-1.5 justify-end">
-                      <SeverityDot severity={t.severity} />
-                      <span className="text-white text-sm capitalize">{t.severity}</span>
-                    </span>
-                  </MetaRow>
-                )}
-                {t.priority && (
-                  <MetaRow label="Priority"><PriorityLabel priority={t.priority} /></MetaRow>
-                )}
-                {t.environment && (
-                  <MetaRow label="Environment"><span className="text-white text-sm capitalize">{t.environment}</span></MetaRow>
-                )}
-                <MetaRow label="Source"><span className="text-white text-sm capitalize">{t.source ?? '—'}</span></MetaRow>
-                <MetaRow label="Raised"><span className="text-white text-sm">{format(new Date(t.created_at), 'MMM d, yyyy')}</span></MetaRow>
-                <MetaRow label="Reopens"><span className="text-white text-sm">{t.reopen_count}</span></MetaRow>
-                {t.tier_snapshot && (
-                  <MetaRow label="Tier"><span className="text-white text-sm">{t.tier_snapshot}</span></MetaRow>
-                )}
-                {t.customer_priority && (
-                  <MetaRow label="Cust. Priority"><span className="text-white text-sm capitalize">{t.customer_priority}</span></MetaRow>
-                )}
-                {t.first_response_at && (
-                  <MetaRow label="First Response"><span className="text-white text-sm">{format(new Date(t.first_response_at), 'MMM d, h:mm a')}</span></MetaRow>
-                )}
-                {t.resolved_at && (
-                  <MetaRow label="Resolved"><span className="text-white text-sm">{format(new Date(t.resolved_at), 'MMM d, h:mm a')}</span></MetaRow>
-                )}
-              </div>
-
-              {/* SLA */}
-              {(t.sla_response_due || t.sla_resolve_due) && (
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-3">SLA</p>
-                  {t.sla_response_due && (
-                    <MetaRow label="Response Due">
-                      <span className={clsx('text-sm font-medium', t.response_sla_breached_at ? 'text-red-400' : 'text-white')}>
-                        {format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
-                        {t.response_sla_breached_at && <span className="block text-[10px] text-red-500">Breached</span>}
-                      </span>
-                    </MetaRow>
-                  )}
-                  {t.sla_resolve_due && (
-                    <MetaRow label="Resolution Due">
-                      <span className={clsx('text-sm font-medium', t.sla_breached_at ? 'text-red-400' : 'text-white')}>
-                        {format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
-                        {t.sla_breached_at && <span className="block text-[10px] text-red-500">Breached</span>}
-                      </span>
-                    </MetaRow>
-                  )}
-                </div>
-              )}
-
-              {/* Description */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-3">Description</p>
-                <p className="text-zinc-400 text-sm leading-relaxed whitespace-pre-wrap">
-                  {t.description ?? 'No description.'}
-                </p>
-              </div>
-
-              {/* AI Draft — Edit + Use */}
-              {t.ai_draft && (
-                <AiDraftPanel draft={t.ai_draft} onUse={handleUseDraft} />
-              )}
-
-              {/* Priority override */}
-              {t.priority_overridden && t.override_reason && (
-                <div className="bg-yellow-950/30 border border-yellow-900 rounded-xl p-4">
-                  <p className="text-[10px] text-yellow-400 font-semibold uppercase tracking-wide mb-1.5">Priority Override</p>
-                  <p className="text-sm text-yellow-300 leading-relaxed">{t.override_reason}</p>
-                </div>
-              )}
-            </div>
         </div>
       </div>
     </MainLayout>

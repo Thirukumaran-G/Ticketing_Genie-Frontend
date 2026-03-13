@@ -1,19 +1,24 @@
-import { useState, useEffect } from 'react';
-import { adminAuthService } from '../services/adminAuthService';
+import { useState, useEffect, useCallback } from 'react';
+import { adminAuthService, UserCreateRequest } from '../services/adminAuthService';
 import { AdminUserResponse } from '../../../types';
 
 export const useAdminUsers = () => {
-  const [users, setUsers]       = useState<AdminUserResponse[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [filter, setFilter]     = useState('all');
+  const [users,    setUsers]    = useState<AdminUserResponse[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [filter,   setFilter]   = useState('all');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    try { setUsers(await adminAuthService.listUsers()); }
-    finally { setLoading(false); }
-  };
+    try {
+      const data = await adminAuthService.listUsers();
+      setUsers(data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = filter === 'all'
     ? users
@@ -21,8 +26,19 @@ export const useAdminUsers = () => {
 
   const deactivate = async (id: string) => {
     await adminAuthService.deactivateUser(id);
-    await load();
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: false } : u));
   };
 
-  return { users, filtered, loading, filter, setFilter, deactivate, reload: load };
+  const createUser = async (payload: UserCreateRequest): Promise<AdminUserResponse> => {
+    setCreating(true);
+    try {
+      const newUser = await adminAuthService.createUser(payload);
+      setUsers(prev => [newUser, ...prev]);
+      return newUser;
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return { users, filtered, loading, creating, filter, setFilter, deactivate, createUser };
 };

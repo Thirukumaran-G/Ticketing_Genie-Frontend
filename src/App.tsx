@@ -79,7 +79,7 @@ const App: React.FC = () => (
             color: '#fff',
             border: '1px solid #27272a',
             borderRadius: '10px',
-            fontSize: '13px',
+            fontSize: '16px',
           },
           success: { iconTheme: { primary: '#22c55e', secondary: '#18181b' } },
           error:   { iconTheme: { primary: '#ef4444', secondary: '#18181b' } },

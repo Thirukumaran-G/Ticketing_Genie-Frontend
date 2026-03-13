@@ -1,4 +1,3 @@
-// src/features/tickets/services/ticketsService.ts
 import { ticketClient, authClient } from '../../../lib/axios';
 import { ENV } from '../../../config/env';
 import {
@@ -15,6 +14,12 @@ import {
 
 export const ticketsService = {
   // ── Customer routes ───────────────────────────────────────────────────────
+
+  /**
+   * Create a ticket via multipart/form-data.
+   * Files (up to 5) are uploaded atomically with the ticket fields in one request.
+   * The backend saves attachments synchronously before returning the 201.
+   */
   createTicket: (payload: {
     title: string;
     description: string;
@@ -22,10 +27,28 @@ export const ticketsService = {
     customer_severity: string;
     environment?: string;
     source?: string;
-  }) =>
-    ticketClient
-      .post<TicketCreateResponse>('/customer/tickets', payload)
-      .then((r) => r.data),
+    files?: File[];
+  }) => {
+    const form = new FormData();
+    form.append('title', payload.title);
+    form.append('description', payload.description);
+    form.append('product_id', payload.product_id);
+    form.append('customer_severity', payload.customer_severity);
+    if (payload.environment) form.append('environment', payload.environment);
+    form.append('source', payload.source ?? 'web');
+
+    // Attach each file under the same field name "files"
+    // FastAPI picks these up as List[UploadFile]
+    if (payload.files?.length) {
+      payload.files.forEach((file) => form.append('files', file));
+    }
+
+    return ticketClient
+      .post<TicketCreateResponse>('/customer/tickets', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
 
   listMyTickets: () =>
     ticketClient
@@ -35,6 +58,12 @@ export const ticketsService = {
   getMyTicket: (ticketId: string) =>
     ticketClient
       .get<CustomerTicketDetail>(`/customer/tickets/${ticketId}`)
+      .then((r) => r.data),
+
+  // ── Customer — get assigned agent name ───────────────────────────────────
+  getTicketAgentInfo: (ticketId: string) =>
+    ticketClient
+      .get<{ assigned: boolean; agent_name: string | null }>(`/customer/tickets/${ticketId}/agent`)
       .then((r) => r.data),
 
   getThread: (ticketId: string) =>
@@ -118,7 +147,7 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
-  // ── NEW: Agent unassign ───────────────────────────────────────────────────
+  // ── Agent unassign ────────────────────────────────────────────────────────
   unassignTicket: (ticketId: string, justification: string) =>
     ticketClient
       .patch(`/agent/tickets/${ticketId}/unassign`, { justification })
@@ -160,7 +189,7 @@ export const ticketsService = {
       .get<{ full_name: string; email: string }>(`/agent/tickets/${ticketId}/customer`)
       .then((r) => r.data),
 
-  // ── NEW: Team Lead thread + internal note ─────────────────────────────────
+  // ── Team Lead thread + internal note ─────────────────────────────────────
   getTLTicketThread: (ticketId: string) =>
     ticketClient
       .get<TicketThreadResponse>(`/teamlead/tickets/${ticketId}/thread`)

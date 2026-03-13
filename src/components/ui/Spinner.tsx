@@ -5,7 +5,7 @@ export interface SpinnerProps { size?: 'sm' | 'md' | 'lg'; }
 
 export const Spinner: React.FC<SpinnerProps> = ({ size = 'md' }) => (
   <svg
-    className={clsx('animate-spin text-white', { sm: 'h-4 w-4', md: 'h-8 w-8', lg: 'h-12 w-12' }[size])}
+    className={clsx('animate-spin text-blue-600', { sm: 'h-4 w-4', md: 'h-8 w-8', lg: 'h-12 w-12' }[size])}
     fill="none" viewBox="0 0 24 24"
   >
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

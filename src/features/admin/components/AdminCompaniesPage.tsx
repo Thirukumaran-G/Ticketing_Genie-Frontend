@@ -15,6 +15,7 @@ const companySchema = z.object({
 });
 type CompanyForm = z.infer<typeof companySchema>;
 
+
 const subSchema = z.object({
   product_id: z.string().min(1, 'Select product'),
   tier_id:    z.string().min(1, 'Select tier'),
@@ -25,27 +26,28 @@ const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: 
   label, error, children, ...props
 }) => (
   <div>
-    <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-widest">{label}</label>
+    <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-widest">{label}</label>
     <select
-      className="w-full bg-zinc-900 border border-zinc-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-white"
+      className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
       {...props}
     >
       {children}
     </select>
-    {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
   </div>
 );
 
 export const AdminCompaniesPage: React.FC = () => {
-  const [companies, setCompanies]   = useState<CompanyResponse[]>([]);
-  const [tiers, setTiers]           = useState<TierResponse[]>([]);
-  const [products, setProducts]     = useState<ProductResponse[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [companies,  setCompanies]  = useState<CompanyResponse[]>([]);
+  const [tiers,      setTiers]      = useState<TierResponse[]>([]);
+  const [products,   setProducts]   = useState<ProductResponse[]>([]);
+  const [loading,    setLoading]    = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [selected, setSelected]     = useState<CompanyResponse | null>(null);
-  const [subs, setSubs]             = useState<SubscriptionResponse[]>([]);
-  const [showSub, setShowSub]       = useState(false);
+  const [selected,   setSelected]   = useState<CompanyResponse | null>(null);
+  const [subs,       setSubs]       = useState<SubscriptionResponse[]>([]);
+  const [showSub,    setShowSub]    = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { register, handleSubmit, reset, formState: { errors } } =
     useForm<CompanyForm>({ resolver: zodResolver(companySchema) });
@@ -89,12 +91,25 @@ export const AdminCompaniesPage: React.FC = () => {
     finally { setSubmitting(false); }
   };
 
-  const onToggle = async (c: CompanyResponse) => {
-    try {
-      await adminAuthService.updateCompany(c.id, { is_active: !c.is_active });
-      toast.success('Updated'); load();
-    } catch { toast.error('Failed'); }
-  };
+  const onDeleteSub = async (sub: SubscriptionResponse) => {
+  if (!selected || !confirm('Permanently delete this subscription?')) return;
+  try {
+    await adminAuthService.deleteSubscription(selected.id, sub.id);
+    toast.success('Subscription deleted');
+    loadSubs(selected);
+  } catch { toast.error('Failed to delete'); }
+};
+
+  const onDeleteCompany = async (c: CompanyResponse) => {
+  if (!confirm(`Permanently delete "${c.name}"?`)) return;
+  try {
+    setDeletingId(c.id);
+    await adminAuthService.deleteCompany(c.id);
+    toast.success('Company deleted');
+    load();
+  } catch { toast.error('Failed to delete'); }
+  finally { setDeletingId(null); }
+};
 
   const onDeactivateSub = async (sub: SubscriptionResponse) => {
     if (!selected || !confirm('Deactivate this subscription?')) return;
@@ -105,102 +120,236 @@ export const AdminCompaniesPage: React.FC = () => {
     } catch { toast.error('Failed'); }
   };
 
-  return (  
+  return (
     <MainLayout navItems={adminNav} pageTitle="Companies">
       <div className="p-6 space-y-6">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white">Companies</h2>
-            <p className="text-zinc-500 text-sm mt-1">{companies.length} registered</p>
+            <h2 className="text-2xl font-bold text-slate-900">Companies</h2>
+            <p className="text-slate-500 text-sm mt-0.5">{companies.length} total</p>
           </div>
-          <Button size="sm" onClick={() => setShowCreate(true)}>+ New Company</Button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Company
+          </button>
         </div>
 
-        <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="flex gap-4 px-6 py-3 border-b border-zinc-800 bg-zinc-900/40">
-            <div className="flex-1 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Company</div>
-            <div className="w-40 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Domain</div>
-            <div className="w-20 text-xs font-semibold text-zinc-500 uppercase tracking-widest">Status</div>
-            <div className="w-36" />
+        {/* Table */}
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm w-full">
+
+          {/* Header row */}
+          <div className="grid grid-cols-[1fr_200px_160px] px-6 py-3 bg-blue-600  border-slate-700">
+            <p className="text-xs font-semibold text-slate-300 uppercase tracking-widest">Company</p>
+            <p className="text-xs font-semibold text-slate-300 uppercase tracking-widest">Domain</p>
+            <p className="text-xs font-semibold text-slate-300 uppercase tracking-widest">Actions</p>
           </div>
-          {loading ? <PageLoader /> : companies.length === 0 ? (
-            <div className="text-center py-16"><p className="text-zinc-500 text-sm">No companies yet</p></div>
-          ) : companies.map(c => (
-            <div key={c.id} className="flex items-center gap-4 px-6 py-4 border-b border-zinc-900 hover:bg-zinc-900/30 transition-colors">
-              <div className="flex-1">
-                <button onClick={() => loadSubs(c)} className="text-sm font-medium text-white hover:text-zinc-300 text-left">
-                  {c.name}
-                </button>
-                <p className="text-xs text-zinc-600 font-mono mt-0.5">{c.id.slice(0,8)}…</p>
-              </div>
-              <div className="w-40 text-xs text-zinc-400">{(c as any).domain ?? '—'}</div>
-              <div className="w-20">
-                <Badge variant={c.is_active ? 'success' : 'default'}>{c.is_active ? 'Active' : 'Off'}</Badge>
-              </div>
-              <div className="w-36 flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => loadSubs(c)}>Subs</Button>
-                <Button size="sm" variant={c.is_active ? 'danger' : 'secondary'} onClick={() => onToggle(c)}>
-                  {c.is_active ? 'Disable' : 'Enable'}
-                </Button>
-              </div>
+
+          {loading ? (
+            <PageLoader />
+          ) : companies.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-slate-400 text-sm">No companies yet</p>
             </div>
-          ))}
+          ) : (
+            companies.map((c, idx) => (
+              <div
+                key={c.id}
+                className={`grid grid-cols-[1fr_200px_160px] items-center px-6 py-4 border-b border-slate-100 last:border-0 ${
+                  !c.is_active ? 'bg-slate-50' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                }`}
+              >
+                {/* Name */}
+                <div>
+                  <button
+                    onClick={() => loadSubs(c)}
+                    className="text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors text-left"
+                  >
+                    {c.name}
+                  </button>
+                </div>
+
+                {/* Domain */}
+                <p className="text-sm text-slate-600 font-mono">{(c as any).domain ?? '—'}</p>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => loadSubs(c)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Subscriptions
+                  </button>
+                  {c.is_active && (
+                    <button
+                      onClick={() => onDeleteCompany(c)}
+                      disabled={deletingId === c.id}
+                      className="bg-red-50 border border-red-200 hover:bg-red-600 hover:border-red-600 hover:text-white text-red-600 p-1.5 rounded-lg transition-all disabled:opacity-40"
+                      title="Delete company"
+                    >
+                      {deletingId === c.id ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
-      {/* Create company */}
+      {/* ── Create Company Modal ── */}
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="New Company">
         <form onSubmit={handleSubmit(onCreate)} className="space-y-4" noValidate>
           <Input label="Company Name" placeholder="Acme Corp" error={errors.name?.message} {...register('name')} />
           <Input label="Domain (optional)" placeholder="acme.com" error={errors.domain?.message} {...register('domain')} />
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button type="submit" full loading={submitting}>Create</Button>
+            <button
+              type="button"
+              onClick={() => { setShowCreate(false); reset(); }}
+              className="flex-1 border border-slate-200 text-slate-700 font-semibold text-sm py-2.5 rounded-xl hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {submitting ? 'Creating…' : 'Create Company'}
+            </button>
           </div>
         </form>
       </Modal>
 
-      {/* Subscriptions panel */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={`${selected?.name} — Subscriptions`} maxW="max-w-xl">
-        <div className="space-y-3">
-          {subs.length === 0 ? (
-            <p className="text-zinc-500 text-sm text-center py-4">No subscriptions yet</p>
-          ) : subs.map(s => {
-            const prod = products.find(p => p.id === s.product_id);
-            const tier = tiers.find(t => t.id === s.tier_id);
-            return (
-              <div key={s.id} className="flex items-center justify-between bg-zinc-900 rounded-lg p-3 border border-zinc-800">
-                <div>
-                  <p className="text-sm font-medium text-white">{prod?.name ?? s.product_id.slice(0,8)}</p>
-                  <p className="text-xs text-zinc-500">{tier?.name ?? s.tier_id.slice(0,8)}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={s.is_active ? 'success' : 'default'}>{s.is_active ? 'Active' : 'Off'}</Badge>
-                  {s.is_active && (
-                    <Button size="sm" variant="danger" onClick={() => onDeactivateSub(s)}>Off</Button>
-                  )}
-                </div>
+      {/* ── Subscriptions Modal ── */}
+      <Modal
+        open={!!selected}
+        onClose={() => { setSelected(null); setSubs([]); }}
+        title={selected?.name ?? ''}
+        maxW="max-w-lg"
+      >
+        {selected && (
+          <div className="space-y-4">
+
+            <div className="border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                  Subscriptions
+                </p>
+                <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
+                  {subs.length}
+                </span>
               </div>
-            );
-          })}
-          <Button size="sm" variant="outline" onClick={() => setShowSub(true)} full>+ Assign Subscription</Button>
-        </div>
+
+              {subs.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl">
+                  <p className="text-slate-400 text-sm">No subscriptions assigned</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {subs.map(s => {
+                    const prod = products.find(p => p.id === s.product_id);
+                    const tier = tiers.find(t => t.id === s.tier_id);
+                    return (
+                      <div
+                        key={s.id}
+                        className={`flex items-center justify-between rounded-xl p-4 border-2 ${
+                          s.is_active
+                            ? 'bg-white border-blue-100'
+                            : 'bg-slate-50 border-slate-100 opacity-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${s.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {prod?.name ?? s.product_id.slice(0, 8)}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {tier?.name ?? s.tier_id.slice(0, 8)}
+                            </p>
+                          </div>
+                        </div>
+                        {s.is_active && (
+                          <button
+                            onClick={() => onDeleteSub(s)}
+                            className="p-1.5 rounded-lg text-red-600 bg-red-50 border border-red-200 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all"
+                            title="Delete subscription"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {selected.is_active && (
+              <button
+                onClick={() => setShowSub(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Assign Subscription
+              </button>
+            )}
+          </div>
+        )}
       </Modal>
 
-      {/* Assign sub */}
-      <Modal open={showSub} onClose={() => setShowSub(false)} title="Assign Subscription">
+      {/* ── Assign Subscription Modal ── */}
+      <Modal open={showSub} onClose={() => { setShowSub(false); subForm.reset(); }} title="Assign Subscription">
         <form onSubmit={subForm.handleSubmit(onAssignSub)} className="space-y-4" noValidate>
           <Select label="Product" error={subForm.formState.errors.product_id?.message} {...subForm.register('product_id')}>
             <option value="">Select product…</option>
-            {products.filter(p => p.is_active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {products.filter(p => p.is_active).map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
           </Select>
           <Select label="Tier" error={subForm.formState.errors.tier_id?.message} {...subForm.register('tier_id')}>
             <option value="">Select tier…</option>
-            {tiers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {tiers.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
           </Select>
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setShowSub(false)}>Cancel</Button>
-            <Button type="submit" full loading={submitting}>Assign</Button>
+            <button
+              type="button"
+              onClick={() => { setShowSub(false); subForm.reset(); }}
+              className="flex-1 border border-slate-200 text-slate-700 font-semibold text-sm py-2.5 rounded-xl hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {submitting ? 'Assigning…' : 'Assign'}
+            </button>
           </div>
         </form>
       </Modal>

@@ -33,14 +33,14 @@ export const ForgotPasswordPage: React.FC = () => {
     return (
       <AuthLayout title="Check your email" subtitle="We sent a reset link">
         <div className="text-center py-4">
-          <div className="w-14 h-14 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center mx-auto mb-5">
-            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-14 h-14 bg-slate-50 border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5">
+            <svg className="w-7 h-7 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <p className="text-zinc-400 text-sm">Reset link sent to</p>
-          <p className="text-white font-semibold mt-1 mb-6">{getValues('email')}</p>
-          <Link to="/login" className="text-sm text-zinc-400 hover:text-white">← Back to sign in</Link>
+          <p className="text-slate-500 text-sm">Reset link sent to</p>
+          <p className="text-slate-900 font-semibold mt-1 mb-6">{getValues('email')}</p>
+          <Link to="/login" className="text-sm text-slate-700 hover:text-blue-600">← Back to sign in</Link>
         </div>
       </AuthLayout>
     );
@@ -51,8 +51,8 @@ export const ForgotPasswordPage: React.FC = () => {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
         <Input label="Email address" type="email" placeholder="you@company.com" error={errors.email?.message} {...register('email')} />
         <Button type="submit" full size="lg" loading={loading}>Send reset link</Button>
-        <p className="text-center text-sm text-zinc-500">
-          <Link to="/login" className="text-zinc-400 hover:text-white">← Back to sign in</Link>
+        <p className="text-center text-sm text-slate-600">
+          <Link to="/login" className="text-slate-700 hover:text-blue-600">← Back to sign in</Link>
         </p>
       </form>
     </AuthLayout>

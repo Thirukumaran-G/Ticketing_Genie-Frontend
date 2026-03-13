@@ -47,14 +47,14 @@ export const LoginPage: React.FC = () => {
           {...register('password')}
         />
         <div className="flex justify-end">
-          <Link to="/forgot-password" className="text-xs text-zinc-400 hover:text-white transition-colors">
+          <Link to="/forgot-password" className="text-xs text-slate-600 hover:text-blue-700 transition-colors">
             Forgot password?
           </Link>
         </div>
         <Button type="submit" full size="lg" loading={isLoading}>Sign in</Button>
-        <p className="text-center text-sm text-zinc-500">
+        <p className="text-center text-sm text-slate-600">
           No account?{' '}
-          <Link to="/register" className="text-white hover:underline font-medium">Create one</Link>
+          <Link to="/register" className="text-blue-600 hover:underline font-medium">Create one</Link>
         </p>
       </form>
     </AuthLayout>

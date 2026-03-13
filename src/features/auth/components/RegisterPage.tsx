@@ -111,9 +111,9 @@ export const RegisterPage: React.FC = () => {
           Create account
         </Button>
         
-        <p className="text-center text-sm text-zinc-500">
+        <p className="text-center text-sm text-slate-600">
           Already have an account?{' '}
-          <Link to="/login" className="text-white hover:underline font-medium">
+          <Link to="/login" className="text-blue-600 hover:underline font-medium">
             Sign in
           </Link>
         </p>

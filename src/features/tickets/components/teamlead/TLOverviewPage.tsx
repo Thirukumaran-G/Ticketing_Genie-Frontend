@@ -16,10 +16,10 @@ const WorkloadBar: React.FC<{ open: number; max: number }> = ({ open, max }) => 
   const color = pct >= 80 ? 'bg-red-500' : pct >= 60 ? 'bg-orange-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-green-500';
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+      <div className="flex-1 bg-blue-100 rounded-full h-1.5">
         <div className={clsx('h-1.5 rounded-full transition-all duration-500', color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs text-zinc-500 w-8 text-right">{open}</span>
+      <span className="text-xs text-slate-600 w-8 text-right">{open}</span>
     </div>
   );
 };
@@ -44,31 +44,31 @@ const AgentCard: React.FC<{ agent: AgentWorkloadItem; max: number }> = ({ agent,
   const pct = max > 0 ? Math.min((agent.open_tickets / max) * 100, 100) : 0;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors">
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-300 shadow-sm transition-colors">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0 relative">
-            <span className="text-sm font-bold text-zinc-300">
+          <div className="w-9 h-9 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center flex-shrink-0 relative">
+            <span className="text-sm font-bold text-blue-700">
               {agent.user_id.slice(0, 2).toUpperCase()}
             </span>
             <StatusDot open={agent.open_tickets} max={max} />
           </div>
           <div>
-            <p className="text-white text-sm font-semibold">
+            <p className="text-slate-900 text-sm font-semibold">
               Agent {agent.user_id.slice(0, 8)}…
             </p>
             {agent.experience !== undefined && (
-              <p className="text-zinc-600 text-xs">
+              <p className="text-slate-600 text-xs">
                 {agent.experience} yr{agent.experience !== 1 ? 's' : ''} experience
               </p>
             )}
           </div>
         </div>
         <div className={clsx('text-lg font-bold',
-          pct >= 80 ? 'text-red-400' : pct >= 60 ? 'text-orange-400' : 'text-white',
+          pct >= 80 ? 'text-red-400' : pct >= 60 ? 'text-orange-400' : 'text-slate-900',
         )}>
           {agent.open_tickets}
-          <span className="text-xs text-zinc-500 font-normal ml-1">open</span>
+          <span className="text-xs text-slate-600 font-normal ml-1">open</span>
         </div>
       </div>
 
@@ -79,7 +79,7 @@ const AgentCard: React.FC<{ agent: AgentWorkloadItem; max: number }> = ({ agent,
           {Object.keys(agent.skills).map((skill) => (
             <span
               key={skill}
-              className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-400"
+              className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-600"
             >
               {skill}
             </span>
@@ -90,7 +90,7 @@ const AgentCard: React.FC<{ agent: AgentWorkloadItem; max: number }> = ({ agent,
       {/* Quick link to tickets for this agent */}
       <Link
         to={`/tickets/team`}
-        className="mt-3 flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors"
+        className="mt-3 flex items-center gap-1 text-xs text-slate-600 hover:text-slate-500 transition-colors"
       >
         View tickets
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,9 +121,9 @@ export const TLOverviewPage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Team Overview</h2>
+            <h2 className="text-2xl font-bold text-slate-900">Team Overview</h2>
             {teamOverview && (
-              <p className="text-zinc-500 text-sm mt-1">
+              <p className="text-slate-600 text-sm mt-1">
                 {teamOverview.team_name} · {agents.length} agents
               </p>
             )}
@@ -138,21 +138,21 @@ export const TLOverviewPage: React.FC = () => {
 
         {isLoading ? <PageLoader /> : !teamOverview ? (
           <div className="text-center py-20">
-            <p className="text-zinc-500">No team data available</p>
+            <p className="text-slate-500">No team data available</p>
           </div>
         ) : (
           <>
             {/* Stats grid */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               {[
-                { label: 'Agents',      value: agents.length,                  color: 'text-white' },
-                { label: 'Unassigned',  value: teamOverview.unassigned_count,  color: teamOverview.unassigned_count > 0 ? 'text-orange-400' : 'text-white' },
-                { label: 'Total Open',  value: totalOpen,                       color: 'text-white' },
-                { label: 'Avg Load',    value: agents.length > 0 ? Math.round(totalOpen / agents.length) : 0, color: 'text-white' },
+                { label: 'Agents',      value: agents.length,                  color: 'text-slate-900' },
+                { label: 'Unassigned',  value: teamOverview.unassigned_count,  color: teamOverview.unassigned_count > 0 ? 'text-orange-400' : 'text-slate-900' },
+                { label: 'Total Open',  value: totalOpen,                       color: 'text-slate-900' },
+                { label: 'Avg Load',    value: agents.length > 0 ? Math.round(totalOpen / agents.length) : 0, color: 'text-slate-900' },
                 { label: 'Overloaded',  value: overloaded,                      color: overloaded > 0 ? 'text-red-400' : 'text-green-400' },
               ].map(({ label, value, color }) => (
-                <div key={label} className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
-                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">{label}</p>
+                <div key={label} className="bg-white border border-slate-200 rounded-xl p-5">
+                  <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold text-blue-600 mb-1">{label}</p>
                   <p className={clsx('text-3xl font-bold', color)}>{value}</p>
                 </div>
               ))}
@@ -180,8 +180,8 @@ export const TLOverviewPage: React.FC = () => {
 
             {/* Agent cards */}
             {agents.length === 0 ? (
-              <div className="text-center py-16 bg-zinc-950 border border-zinc-800 rounded-xl">
-                <p className="text-zinc-500 text-sm">No agents in this team</p>
+              <div className="text-center py-16 bg-white border border-slate-200 rounded-xl">
+                <p className="text-slate-500 text-sm">No agents in this team</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
