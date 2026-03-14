@@ -130,24 +130,19 @@ const TextBubble: React.FC<{ item: ConversationItem; agentName: string | null }>
 
   return (
     <div className="flex gap-3 py-4">
-      {/* Avatar */}
       <div className={clsx(
         'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 select-none mt-0.5',
         isCustomer ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]'
       )}>
         {initials}
       </div>
-
-      {/* Body */}
       <div className="flex-1 min-w-0">
-        {/* Name + timestamp */}
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-[#172b4d] text-sm font-semibold">{displayName}</span>
           <span className="text-[#8993a4] text-xs font-normal">
             {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
           </span>
         </div>
-        {/* Comment text — plain, Jira style */}
         <div className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">
           {item.content}
         </div>
@@ -312,10 +307,11 @@ export const TicketDetailPage: React.FC = () => {
 
   return (
     <MainLayout navItems={customerNav} pageTitle={t.ticket_number}>
-      <div className="h-[calc(100vh-56px)] bg-[#f4f5f7] flex flex-col overflow-hidden">
+      {/* ── Whole page scrolls naturally ── */}
+      <div className="bg-[#f4f5f7] min-h-screen">
 
         {/* Breadcrumb */}
-        <div className="bg-white border-b border-[#dfe1e6] px-6 py-2.5 flex items-center gap-2 flex-shrink-0">
+        <div className="bg-white border-b border-[#dfe1e6] px-6 py-2.5 flex items-center gap-2">
           <Link to="/tickets/mine" className="text-[#0052cc] hover:underline text-sm flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -326,16 +322,17 @@ export const TicketDetailPage: React.FC = () => {
           <span className="text-[#44546f] text-sm font-mono">{t.ticket_number}</span>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-6 py-4 gap-3">
+        {/* Page content — uniform padding, natural stacking */}
+        <div className="px-6 py-6 flex flex-col gap-4">
 
           {/* Title */}
-          <div className="flex-shrink-0">
+          <div>
             <p className="text-[#44546f] text-xs font-mono mb-0.5">{t.ticket_number}</p>
             <h1 className="text-[#172b4d] text-xl font-semibold leading-snug">{t.title ?? '(No title)'}</h1>
           </div>
 
           {/* SLA banner */}
-          <div className={clsx('flex-shrink-0 flex items-center gap-2.5 px-4 py-2 rounded border text-sm', slaBg[responseInfo.icon])}>
+          <div className={clsx('flex items-center gap-2.5 px-4 py-2 rounded border text-sm', slaBg[responseInfo.icon])}>
             <span className={responseInfo.color}>
               {responseInfo.icon === 'check' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
               {responseInfo.icon === 'warning' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
@@ -345,9 +342,9 @@ export const TicketDetailPage: React.FC = () => {
             {responseInfo.sub && <span className="text-[#44546f]">— {responseInfo.sub}</span>}
           </div>
 
-          {/* Details — unchanged */}
-          <div className="flex-shrink-0 bg-white border border-[#dfe1e6] rounded px-5 py-3">
-            <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-2">Details</p>
+          {/* Details */}
+          <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
+            <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Details</p>
             <div className="flex gap-0">
               <div className="flex-1 flex flex-col gap-0.5 pr-6">
                 {leftKVs.map((kv, i) => <KV key={i} label={kv.label}>{kv.node}</KV>)}
@@ -359,33 +356,33 @@ export const TicketDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Description — unchanged */}
-          <div className="flex-shrink-0 bg-white border border-[#dfe1e6] rounded px-5 py-3">
-            <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-2">Description</p>
+          {/* Description */}
+          <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
+            <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Description</p>
             {t.priority_overridden && t.override_reason && (
-              <div className="flex items-start gap-2 px-3 py-2 bg-[#fffae6] border border-[#f3cc4d] rounded mb-2">
+              <div className="flex items-start gap-2 px-3 py-2 bg-[#fffae6] border border-[#f3cc4d] rounded mb-3">
                 <svg className="w-4 h-4 text-[#974f0c] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
                 <p className="text-xs text-[#172b4d]">{t.override_reason}</p>
               </div>
             )}
-            <p className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap line-clamp-3">
+            <p className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">
               {t.description ?? <span className="text-[#8993a4] italic">No description provided.</span>}
             </p>
           </div>
 
-          {/* ── Activity — Jira comment style ── */}
-          <div className="flex-1 min-h-0 bg-white border border-[#dfe1e6] rounded flex flex-col overflow-hidden">
+          {/* ── Activity — no inner scroll, grows with content ── */}
+          <div className="bg-white border border-[#dfe1e6] rounded pb-2">
 
             {/* Header */}
-            <div className="px-6 pt-4 pb-2 flex-shrink-0">
+            <div className="px-6 pt-5 pb-3">
               <h3 className="text-[#172b4d] text-sm font-semibold">Activity</h3>
             </div>
 
-            {/* ── Add comment box — always visible at top like Jira ── */}
+            {/* Add comment box */}
             {canReply && (
-              <div className="flex-shrink-0 px-6 pb-3">
+              <div className="px-6 pb-4">
                 <div className="flex gap-3 items-start">
                   {/* Your avatar */}
                   <div className="w-8 h-8 rounded-full bg-[#0052cc] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">
@@ -394,7 +391,6 @@ export const TicketDetailPage: React.FC = () => {
 
                   {/* Editor */}
                   <div className="flex-1 min-w-0">
-                    {/* Jira-style editor border */}
                     <div className={clsx(
                       'rounded border bg-white transition-all overflow-hidden',
                       commentFocused
@@ -402,36 +398,26 @@ export const TicketDetailPage: React.FC = () => {
                         : 'border-[#dfe1e6] hover:border-[#b3bac5]',
                       replyError && !commentFocused && 'border-[#ff7452]'
                     )}>
-                      {/* Formatting toolbar — visible when focused */}
+                      {/* Formatting toolbar */}
                       {commentFocused && (
                         <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-[#ebecf0] bg-[#fafbfc]">
-                          {/* Bold */}
                           <button type="button" title="Bold" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
                             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z"/><path d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z"/></svg>
                           </button>
-                          {/* Italic */}
                           <button type="button" title="Italic" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
                           </button>
-                          {/* Underline */}
                           <button type="button" title="Underline" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 3v7a6 6 0 006 6 6 6 0 006-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
                           </button>
-
                           <div className="w-px h-4 bg-[#dfe1e6] mx-1" />
-
-                          {/* Bullet list */}
                           <button type="button" title="Bullet list" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
                           </button>
-                          {/* Numbered list */}
                           <button type="button" title="Numbered list" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4" /><path d="M4 10h2" /><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
                           </button>
-
                           <div className="w-px h-4 bg-[#dfe1e6] mx-1" />
-
-                          {/* Attach */}
                           <button
                             type="button"
                             title="Attach file"
@@ -492,19 +478,19 @@ export const TicketDetailPage: React.FC = () => {
               </div>
             )}
 
-            {/* Divider between composer and comments */}
+            {/* Divider */}
             {canReply && merged.length > 0 && (
-              <div className="border-t border-[#ebecf0] flex-shrink-0" />
+              <div className="border-t border-[#ebecf0]" />
             )}
 
-            {/* ── Comments list — scrollable ── */}
-            <div className="flex-1 overflow-y-auto px-6 min-h-0">
+            {/* ── Comments list — no scroll, grows naturally ── */}
+            <div className="px-6">
               {threadLoading ? (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex items-center justify-center py-12">
                   <div className="w-5 h-5 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : merged.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center py-4">
+                <div className="flex flex-col items-center justify-center text-center py-12">
                   <p className="text-[#8993a4] text-sm">No comments yet on this issue.</p>
                   <p className="text-[#c1c7d0] text-xs mt-1">An agent will respond shortly.</p>
                 </div>
@@ -521,6 +507,10 @@ export const TicketDetailPage: React.FC = () => {
             </div>
 
           </div>
+
+          {/* Bottom padding */}
+          <div className="h-4" />
+
         </div>
       </div>
     </MainLayout>
