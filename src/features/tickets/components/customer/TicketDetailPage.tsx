@@ -1,7 +1,7 @@
 // src/features/tickets/components/customer/TicketDetailPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { format, formatDistanceToNow, differenceInMinutes } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { MainLayout } from '../../../../layouts/MainLayout';
@@ -12,48 +12,56 @@ import { fetchMyTicket, fetchProducts } from '../../slices/ticketsSlice';
 import { ticketsService } from '../../services/ticketsService';
 import { customerNav } from './customerNav';
 import { ticketClient } from '../../../../lib/axios';
+import { CustomerSLAPanel } from '../shared/SLAPanel';
 
 interface ConversationItem {
-  id: string;
+  id:          string;
+  author_id:   string;
   author_type: 'customer' | 'agent';
-  content: string;
-  created_at: string;
+  content:     string;
+  created_at:  string;
 }
 
 interface AttachmentItem {
-  id: string;
-  file_name: string;
-  file_size: number | null;
-  mime_type: string | null;
+  id:         string;
+  file_name:  string;
+  file_size:  number | null;
+  mime_type:  string | null;
   created_at: string;
 }
 
 type ThreadEntry =
-  | { kind: 'message'; data: ConversationItem }
+  | { kind: 'message';    data: ConversationItem }
   | { kind: 'attachment'; data: AttachmentItem; side: 'customer' | 'agent' };
 
 interface ThreadData {
   conversations: ConversationItem[];
-  attachments: AttachmentItem[];
+  attachments:   AttachmentItem[];
 }
 
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']);
+const IMAGE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+]);
 
 function formatBytes(b: number | null) {
   if (!b) return '';
-  if (b < 1024) return `${b} B`;
+  if (b < 1024)    return `${b} B`;
   if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1048576).toFixed(1)} MB`;
 }
 
 function fileIcon(mime: string | null) {
   if (!mime) return '📄';
-  if (mime.startsWith('image/')) return '🖼️';
-  if (mime === 'application/pdf') return '📋';
-  if (mime.includes('zip') || mime.includes('tar')) return '🗜️';
+  if (mime.startsWith('image/'))                                              return '🖼️';
+  if (mime === 'application/pdf')                                            return '📋';
+  if (mime.includes('zip') || mime.includes('tar'))                          return '🗜️';
   if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return '📊';
-  if (mime.includes('word') || mime.includes('document')) return '📝';
+  if (mime.includes('word') || mime.includes('document'))                    return '📝';
   return '📄';
+}
+
+function getInitials(name: string) {
+  return name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 }
 
 function getTierInfo(tier: string | null | undefined) {
@@ -67,35 +75,6 @@ function getTierInfo(tier: string | null | undefined) {
   return { label: tier || 'Standard', color: 'text-[#44546f]', bg: 'bg-[#f4f5f7] border-[#dfe1e6]' };
 }
 
-function getResponseDeadlineLabel(
-  createdAt: string,
-  slaResponseDue: string | undefined | null,
-  firstResponseAt: string | undefined | null,
-  responseBreachedAt: string | undefined | null,
-) {
-  if (firstResponseAt) {
-    const mins = differenceInMinutes(new Date(firstResponseAt), new Date(createdAt));
-    const hrs = Math.floor(mins / 60);
-    const label = hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
-    return { text: 'Agent responded', sub: `within ${label}`, color: 'text-[#216e4e]', icon: 'check' as const };
-  }
-  if (responseBreachedAt)
-    return { text: 'Response overdue', sub: 'Our team has been alerted', color: 'text-[#ae2e24]', icon: 'warning' as const };
-  if (slaResponseDue) {
-    const now = new Date(), due = new Date(slaResponseDue), created = new Date(createdAt);
-    const totalMin = differenceInMinutes(due, created);
-    const totalHrs = Math.round(totalMin / 60);
-    const remainMins = differenceInMinutes(due, now);
-    const remainHrs = Math.floor(remainMins / 60);
-    if (remainMins < 0)
-      return { text: 'Response overdue', sub: 'Our team has been alerted', color: 'text-[#ae2e24]', icon: 'warning' as const };
-    const windowLabel = totalHrs > 0 ? `${totalHrs}h` : `${totalMin}m`;
-    const remainLabel = remainHrs > 0 ? `${remainHrs}h ${remainMins % 60}m remaining` : `${remainMins}m remaining`;
-    return { text: `Response within ${windowLabel}`, sub: remainLabel, color: remainMins < 60 ? 'text-[#974f0c]' : 'text-[#172b4d]', icon: 'clock' as const };
-  }
-  return { text: 'Our team will respond shortly', color: 'text-[#44546f]', icon: 'clock' as const };
-}
-
 // ── AuthImage ──────────────────────────────────────────────────────────────────
 const AuthImage: React.FC<{ url: string; alt: string; className?: string }> = ({ url, alt, className }) => {
   const [src, setSrc] = useState<string | null>(null);
@@ -103,36 +82,34 @@ const AuthImage: React.FC<{ url: string; alt: string; className?: string }> = ({
   useEffect(() => {
     let obj: string;
     ticketClient.get(url, { responseType: 'blob' })
-      .then(r => { obj = URL.createObjectURL(r.data); setSrc(obj); })
+      .then((r) => { obj = URL.createObjectURL(r.data); setSrc(obj); })
       .catch(() => setErr(true));
     return () => { if (obj) URL.revokeObjectURL(obj); };
   }, [url]);
-  if (err) return <div className={clsx('flex items-center justify-center text-xs text-[#44546f] bg-[#f4f5f7] rounded', className)}>Failed</div>;
+  if (err)  return <div className={clsx('flex items-center justify-center text-xs text-[#44546f] bg-[#f4f5f7] rounded', className)}>Failed</div>;
   if (!src) return <div className={clsx('flex items-center justify-center bg-[#f4f5f7] rounded', className)}><div className="w-4 h-4 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" /></div>;
   return <img src={src} alt={alt} className={clsx('object-cover', className)} />;
 };
 
-// ── KV pair ────────────────────────────────────────────────────────────────────
-const KV: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="flex items-center gap-3 min-h-[30px]">
-    <span className="w-24 flex-shrink-0 text-xs text-[#8993a4]">{label}</span>
-    <div className="flex-1 text-sm text-[#172b4d] min-w-0">{children}</div>
-  </div>
-);
-
-// ── Jira-style comment ─────────────────────────────────────────────────────────
-const TextBubble: React.FC<{ item: ConversationItem; agentName: string | null }> = ({ item, agentName }) => {
-  const isCustomer = item.author_type === 'customer';
-  const displayName = isCustomer ? 'You' : (agentName ?? 'Support Agent');
-  const initials = isCustomer
-    ? 'Y'
-    : agentName ? agentName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'A';
+// ── TextBubble ─────────────────────────────────────────────────────────────────
+const TextBubble: React.FC<{
+  item:                ConversationItem;
+  authorNames:         Record<string, string>;
+  currentUserId:       string;
+  currentUserInitials: string;
+}> = ({ item, authorNames, currentUserId, currentUserInitials }) => {
+  const isCustomer   = item.author_type === 'customer';
+  const resolvedName = authorNames[item.author_id];
+  const displayName  = isCustomer ? 'You' : (resolvedName ?? 'Support Agent');
+  const initials     = isCustomer
+    ? currentUserInitials
+    : resolvedName ? getInitials(resolvedName) : 'A';
 
   return (
     <div className="flex gap-3 py-4">
       <div className={clsx(
         'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 select-none mt-0.5',
-        isCustomer ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]'
+        isCustomer ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]',
       )}>
         {initials}
       </div>
@@ -143,34 +120,38 @@ const TextBubble: React.FC<{ item: ConversationItem; agentName: string | null }>
             {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
           </span>
         </div>
-        <div className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">
-          {item.content}
-        </div>
+        <div className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">{item.content}</div>
       </div>
     </div>
   );
 };
 
-const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; isOwn: boolean; agentName: string | null }> = ({
-  att, ticketId, isOwn, agentName,
-}) => {
-  const url = ticketsService.getAttachmentUrl(ticketId, att.id);
-  const isImg = IMAGE_TYPES.has(att.mime_type ?? '');
-  const displayName = isOwn ? 'You' : (agentName ?? 'Support Agent');
-  const initials = isOwn ? 'Y' : (agentName ? agentName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'A');
+const AttachmentBubble: React.FC<{
+  att:                 AttachmentItem;
+  ticketId:            string;
+  isOwn:               boolean;
+  authorNames:         Record<string, string>;
+  currentUserInitials: string;
+}> = ({ att, ticketId, isOwn, currentUserInitials }) => {
+  const url         = ticketsService.getAttachmentUrl(ticketId, att.id);
+  const isImg       = IMAGE_TYPES.has(att.mime_type ?? '');
+  const displayName = isOwn ? 'You' : 'Support Agent';
+  const initials    = isOwn ? currentUserInitials : 'A';
 
   return (
     <div className="flex gap-3 py-4">
       <div className={clsx(
         'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 select-none mt-0.5',
-        isOwn ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]'
+        isOwn ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]',
       )}>
         {initials}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-[#172b4d] text-sm font-semibold">{displayName}</span>
-          <span className="text-[#8993a4] text-xs">{formatDistanceToNow(new Date(att.created_at), { addSuffix: true })}</span>
+          <span className="text-[#8993a4] text-xs">
+            {formatDistanceToNow(new Date(att.created_at), { addSuffix: true })}
+          </span>
         </div>
         {isImg ? (
           <a href={url} target="_blank" rel="noreferrer"
@@ -184,8 +165,12 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; isOwn:
               {fileIcon(att.mime_type)}
             </div>
             <div className="min-w-0">
-              <p className="text-sm text-[#172b4d] font-medium truncate max-w-[200px] group-hover:text-[#0052cc] transition-colors">{att.file_name}</p>
-              {att.file_size && <p className="text-xs text-[#8993a4] mt-0.5">{formatBytes(att.file_size)}</p>}
+              <p className="text-sm text-[#172b4d] font-medium truncate max-w-[200px] group-hover:text-[#0052cc] transition-colors">
+                {att.file_name}
+              </p>
+              {att.file_size && (
+                <p className="text-xs text-[#8993a4] mt-0.5">{formatBytes(att.file_size)}</p>
+              )}
             </div>
             <svg className="w-4 h-4 text-[#8993a4] flex-shrink-0 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -200,48 +185,70 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; isOwn:
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export const TicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
-  const dispatch = useAppDispatch();
+  const dispatch     = useAppDispatch();
   const { myTicketDetail, isLoading, products } = useAppSelector((s) => s.tickets);
 
-  const [thread, setThread] = useState<ThreadData | null>(null);
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const [replyError, setReplyError] = useState('');
-  const [sending, setSending] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [agentName, setAgentName] = useState<string | null>(null);
-  const [commentFocused, setCommentFocused] = useState(false);
+  const { user: currentUser }   = useAppSelector((s) => s.auth);
+  const currentUserId           = currentUser?.id ?? '';
+  const currentUserInitials     = currentUser?.name ? getInitials(currentUser.name) : 'C';
+
+  const [thread, setThread]                     = useState<ThreadData | null>(null);
+  const [threadLoading, setThreadLoading]       = useState(false);
+  // authorNames: conversation author_id → full_name (for message bubbles)
+  const [authorNames, setAuthorNames]           = useState<Record<string, string>>({});
+  // assigneeName: resolved from t.assigned_to (for the details panel)
+  const [assigneeName, setAssigneeName]         = useState<string | null>(null);
+  const [replyText, setReplyText]               = useState('');
+  const [replyError, setReplyError]             = useState('');
+  const [sending, setSending]                   = useState(false);
+  const [uploading, setUploading]               = useState(false);
+  const [commentFocused, setCommentFocused]     = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef  = useRef<HTMLTextAreaElement>(null);
 
+  // ── Load conversation thread + resolve message author names ───────────────
   const loadThread = async () => {
     if (!ticketId) return;
-    try { setThreadLoading(true); setThread(await ticketsService.getThread(ticketId)); }
-    catch { /* silent */ }
+    try {
+      setThreadLoading(true);
+      const data  = await ticketsService.getThread(ticketId);
+      setThread(data);
+      // Only conversation author_ids — completely separate from assignee
+      const ids   = data.conversations.map((c) => c.author_id);
+      const names = await ticketsService.resolveUserNames(ids);
+      setAuthorNames(names);
+    } catch { /* silent */ }
     finally { setThreadLoading(false); }
   };
 
-  const loadAgentName = async () => {
-    if (!ticketId) return;
-    try {
-      const data = await ticketsService.getTicketAgentInfo(ticketId);
-      if (data?.assigned && data?.agent_name) setAgentName(data.agent_name);
-    } catch { /* non-critical */ }
-  };
+  // ── Resolve assignee name from ticket's assigned_to field ─────────────────
+  // Runs independently whenever the ticket detail changes.
+  // Has nothing to do with conversation authors.
+  useEffect(() => {
+    if (!myTicketDetail?.assigned_to) {
+      setAssigneeName(null);
+      return;
+    }
+    ticketsService
+      .resolveUserNames([myTicketDetail.assigned_to])
+      .then((map) => setAssigneeName(map[myTicketDetail.assigned_to!] ?? null));
+  }, [myTicketDetail?.assigned_to]);
 
   useEffect(() => {
-    if (ticketId) { dispatch(fetchMyTicket(ticketId)); loadThread(); loadAgentName(); }
+    if (ticketId) { dispatch(fetchMyTicket(ticketId)); loadThread(); }
     if (!products.length) dispatch(fetchProducts());
   }, [ticketId]);
 
-  useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [thread]);
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [thread]);
 
   const merged: ThreadEntry[] = thread
     ? [
-        ...thread.conversations.map(c => ({ kind: 'message' as const, data: c })),
-        ...thread.attachments.map(a => ({ kind: 'attachment' as const, data: a, side: 'customer' as const })),
+        ...thread.conversations.map((c) => ({ kind: 'message'    as const, data: c })),
+        ...thread.attachments.map((a)   => ({ kind: 'attachment' as const, data: a, side: 'customer' as const })),
       ].sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime())
     : [];
 
@@ -268,46 +275,53 @@ export const TicketDetailPage: React.FC = () => {
       loadThread();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? 'Upload failed');
-    } finally { setUploading(false); e.target.value = ''; }
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   if (isLoading || !myTicketDetail) {
     return <MainLayout navItems={customerNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
   }
 
-  const t = myTicketDetail;
-  const canReply = !['closed', 'resolved'].includes(t.status);
-  const productName = t.product_id ? products.find(p => p.id === String(t.product_id))?.name ?? null : null;
-  const tierInfo = t.tier_snapshot ? getTierInfo(t.tier_snapshot) : null;
-  const responseInfo = getResponseDeadlineLabel(t.created_at, t.sla_response_due, t.first_response_at, t.response_sla_breached_at);
-  const slaBg = { check: 'bg-[#e3fcef] border-[#57d9a3]', warning: 'bg-[#ffebe6] border-[#ff7452]', clock: 'bg-[#deebff] border-[#4c9aff]' };
+  const t           = myTicketDetail;
+  const canReply    = !['closed', 'resolved'].includes(t.status);
+  const productName = t.product_id ? products.find((p) => p.id === String(t.product_id))?.name ?? null : null;
+  const tierInfo    = t.tier_snapshot ? getTierInfo(t.tier_snapshot) : null;
 
-  const leftKVs: { label: string; node: React.ReactNode }[] = [
-    { label: 'Status', node: <StatusBadge status={t.status} /> },
-    ...(t.priority ? [{ label: 'Priority', node: <PriorityLabel priority={t.priority} /> }] : []),
-    ...(t.severity ? [{ label: 'Severity', node: <span className="flex items-center gap-1.5"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span> }] : []),
-    ...(tierInfo ? [{ label: 'Support Tier', node: <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-semibold', tierInfo.bg, tierInfo.color)}><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>{tierInfo.label}</span> }] : []),
-  ];
+  const responseDueNode = (() => {
+    if (!t.sla_response_due) return null;
+    const due = new Date(t.sla_response_due); const now = new Date();
+    const met = !!t.first_response_at; const overdue = !met && now > due;
+    return (
+      <span className={clsx('text-sm', met ? 'text-[#216e4e]' : overdue ? 'text-[#ae2e24]' : 'text-[#172b4d]')}>
+        {met
+          ? `Responded ${format(new Date(t.first_response_at!), 'MMM d, h:mm a')}`
+          : overdue
+          ? `Overdue · was ${format(due, 'MMM d, h:mm a')}`
+          : format(due, 'MMM d, h:mm a')}
+      </span>
+    );
+  })();
 
-  const rightKVs: { label: string; node: React.ReactNode }[] = [
-    {
-      label: 'Assignee', node: agentName ? (
-        <span className="flex items-center gap-1.5">
-          <div className="w-5 h-5 rounded-full bg-[#dfe1e6] flex items-center justify-center text-[10px] font-bold text-[#44546f] flex-shrink-0">
-            {agentName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-          </div>
-          <span>{agentName}</span>
-        </span>
-      ) : <span className="text-[#8993a4]">Unassigned</span>
-    },
-    ...(productName ? [{ label: 'Product', node: <span>{productName}</span> }] : []),
-    ...(t.environment ? [{ label: 'Environment', node: <span className="capitalize">{t.environment}</span> }] : []),
-    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy')}</span> },
-  ];
+  const resolveDueNode = (() => {
+    if (!t.sla_resolve_due) return null;
+    const due = new Date(t.sla_resolve_due); const now = new Date();
+    const met = t.status === 'resolved' || t.status === 'closed'; const overdue = !met && now > due;
+    return (
+      <span className={clsx('text-sm', met ? 'text-[#216e4e]' : overdue ? 'text-[#ae2e24]' : 'text-[#172b4d]')}>
+        {met
+          ? (t.resolved_at ? `Resolved ${format(new Date(t.resolved_at), 'MMM d, h:mm a')}` : 'Resolved')
+          : overdue
+          ? `Overdue · was ${format(due, 'MMM d, h:mm a')}`
+          : format(due, 'MMM d, h:mm a')}
+      </span>
+    );
+  })();
 
   return (
     <MainLayout navItems={customerNav} pageTitle={t.ticket_number}>
-      {/* ── Whole page scrolls naturally ── */}
       <div className="bg-[#f4f5f7] min-h-screen">
 
         {/* Breadcrumb */}
@@ -322,7 +336,6 @@ export const TicketDetailPage: React.FC = () => {
           <span className="text-[#44546f] text-sm font-mono">{t.ticket_number}</span>
         </div>
 
-        {/* Page content — uniform padding, natural stacking */}
         <div className="px-6 py-6 flex flex-col gap-4">
 
           {/* Title */}
@@ -332,27 +345,113 @@ export const TicketDetailPage: React.FC = () => {
           </div>
 
           {/* SLA banner */}
-          <div className={clsx('flex items-center gap-2.5 px-4 py-2 rounded border text-sm', slaBg[responseInfo.icon])}>
-            <span className={responseInfo.color}>
-              {responseInfo.icon === 'check' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
-              {responseInfo.icon === 'warning' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-              {responseInfo.icon === 'clock' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-            </span>
-            <span className={clsx('font-medium', responseInfo.color)}>{responseInfo.text}</span>
-            {responseInfo.sub && <span className="text-[#44546f]">— {responseInfo.sub}</span>}
-          </div>
+          <CustomerSLAPanel
+            createdAt={t.created_at}
+            slaResponseDue={t.sla_response_due}
+            slaResolveDue={t.sla_resolve_due}
+            firstResponseAt={t.first_response_at}
+            resolvedAt={t.resolved_at}
+            responseBreachedAt={t.response_sla_breached_at}
+            slaBreachedAt={t.sla_breached_at}
+            onHoldStartedAt={null}
+            onHoldAccumulated={0}
+            status={t.status}
+          />
 
           {/* Details */}
-          <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
-            <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Details</p>
-            <div className="flex gap-0">
-              <div className="flex-1 flex flex-col gap-0.5 pr-6">
-                {leftKVs.map((kv, i) => <KV key={i} label={kv.label}>{kv.node}</KV>)}
+          <div className="bg-white border border-[#dfe1e6] rounded overflow-hidden">
+            <div className="px-5 py-2.5">
+              <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest">Details</p>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-[#f4f5f7]">
+
+              {/* Col 1 */}
+              <div>
+                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                  <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Status</span>
+                  <StatusBadge status={t.status} />
+                </div>
+                {t.priority && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Priority</span>
+                    <PriorityLabel priority={t.priority} />
+                  </div>
+                )}
+                {t.severity && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Severity</span>
+                    <span className="flex items-center gap-1.5 text-sm text-[#172b4d]">
+                      <SeverityDot severity={t.severity} />
+                      <span className="capitalize">{t.severity}</span>
+                    </span>
+                  </div>
+                )}
+                {tierInfo && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Tier</span>
+                    <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-semibold', tierInfo.bg, tierInfo.color)}>
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      {tierInfo.label}
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="w-px bg-[#ebecf0] flex-shrink-0" />
-              <div className="flex-1 flex flex-col gap-0.5 pl-6">
-                {rightKVs.map((kv, i) => <KV key={i} label={kv.label}>{kv.node}</KV>)}
+
+              {/* Col 2 */}
+              <div>
+                {/* Assignee — resolved from t.assigned_to, independent of conversation authors */}
+                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                  <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Assignee</span>
+                  {t.assigned_to
+                    ? assigneeName
+                      ? (
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <div className="w-5 h-5 rounded-full bg-[#dfe1e6] flex items-center justify-center text-[10px] font-bold text-[#44546f] flex-shrink-0">
+                            {getInitials(assigneeName)}
+                          </div>
+                          <span className="text-sm text-[#172b4d] truncate">{assigneeName}</span>
+                        </span>
+                      )
+                      : <span className="text-sm text-[#8993a4]">Loading…</span>
+                    : <span className="text-sm text-[#8993a4]">Unassigned</span>
+                  }
+                </div>
+                {productName && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Product</span>
+                    <span className="text-sm text-[#172b4d] truncate">{productName}</span>
+                  </div>
+                )}
+                {t.environment && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Environment</span>
+                    <span className="text-sm text-[#172b4d] capitalize">{t.environment}</span>
+                  </div>
+                )}
               </div>
+
+              {/* Col 3 */}
+              <div>
+                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                  <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Raised</span>
+                  <span className="text-sm text-[#172b4d]">{format(new Date(t.created_at), 'MMM d, yyyy')}</span>
+                </div>
+                {responseDueNode && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Response</span>
+                    {responseDueNode}
+                  </div>
+                )}
+                {resolveDueNode && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Resolve</span>
+                    {resolveDueNode}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
 
@@ -372,99 +471,75 @@ export const TicketDetailPage: React.FC = () => {
             </p>
           </div>
 
-          {/* ── Activity — no inner scroll, grows with content ── */}
+          {/* Activity */}
           <div className="bg-white border border-[#dfe1e6] rounded pb-2">
-
-            {/* Header */}
             <div className="px-6 pt-5 pb-3">
               <h3 className="text-[#172b4d] text-sm font-semibold">Activity</h3>
             </div>
 
-            {/* Add comment box */}
             {canReply && (
               <div className="px-6 pb-4">
                 <div className="flex gap-3 items-start">
-                  {/* Your avatar */}
                   <div className="w-8 h-8 rounded-full bg-[#0052cc] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">
-                    Y
+                    {currentUserInitials}
                   </div>
-
-                  {/* Editor */}
                   <div className="flex-1 min-w-0">
                     <div className={clsx(
                       'rounded border bg-white transition-all overflow-hidden',
-                      commentFocused
-                        ? 'border-[#0052cc] shadow-[0_0_0_1px_#0052cc]'
-                        : 'border-[#dfe1e6] hover:border-[#b3bac5]',
-                      replyError && !commentFocused && 'border-[#ff7452]'
+                      commentFocused ? 'border-[#0052cc] shadow-[0_0_0_1px_#0052cc]' : 'border-[#dfe1e6] hover:border-[#b3bac5]',
+                      replyError && !commentFocused && 'border-[#ff7452]',
                     )}>
-                      {/* Formatting toolbar */}
                       {commentFocused && (
                         <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-[#ebecf0] bg-[#fafbfc]">
                           <button type="button" title="Bold" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z"/><path d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z"/></svg>
+                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z"/><path d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z"/>
+                            </svg>
                           </button>
                           <button type="button" title="Italic" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
-                          </button>
-                          <button type="button" title="Underline" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 3v7a6 6 0 006 6 6 6 0 006-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
-                          </button>
-                          <div className="w-px h-4 bg-[#dfe1e6] mx-1" />
-                          <button type="button" title="Bullet list" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
-                          </button>
-                          <button type="button" title="Numbered list" className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4" /><path d="M4 10h2" /><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>
+                            </svg>
                           </button>
                           <div className="w-px h-4 bg-[#dfe1e6] mx-1" />
-                          <button
-                            type="button"
-                            title="Attach file"
+                          <button type="button" title="Attach file"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploading}
-                            className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors disabled:opacity-40 flex items-center gap-1"
-                          >
+                            className="p-1.5 rounded hover:bg-[#ebecf0] text-[#44546f] transition-colors disabled:opacity-40">
                             {uploading
                               ? <div className="w-3.5 h-3.5 border border-[#0052cc] border-t-transparent rounded-full animate-spin" />
-                              : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                              : (
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                </svg>
+                              )
                             }
                           </button>
                         </div>
                       )}
-
-                      {/* Textarea */}
                       <textarea
                         ref={textareaRef}
                         value={replyText}
                         onFocus={() => setCommentFocused(true)}
-                        onChange={e => { setReplyText(e.target.value); setReplyError(''); }}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+                        onChange={(e) => { setReplyText(e.target.value); setReplyError(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
                         placeholder="Add a comment…"
                         rows={commentFocused ? 3 : 1}
                         className="w-full text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-transparent px-3 py-2.5 resize-none outline-none leading-relaxed"
                       />
                     </div>
-
                     {replyError && <p className="text-xs text-[#ae2e24] mt-1 px-0.5">{replyError}</p>}
-
-                    {/* Save / Cancel */}
                     {commentFocused && (
                       <div className="flex items-center gap-2 mt-2">
-                        <button
-                          type="button"
-                          onClick={onSend}
+                        <button type="button" onClick={onSend}
                           disabled={sending || replyText.trim().length < 5}
-                          className="px-3 py-1.5 bg-[#0052cc] text-white text-sm font-medium rounded hover:bg-[#0747a6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                        >
+                          className="px-3 py-1.5 bg-[#0052cc] text-white text-sm font-medium rounded hover:bg-[#0747a6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                           {sending && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
                           Save
                         </button>
-                        <button
-                          type="button"
+                        <button type="button"
                           onClick={() => { setReplyText(''); setReplyError(''); setCommentFocused(false); }}
-                          className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors"
-                        >
+                          className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors">
                           Cancel
                         </button>
                         <span className="ml-auto text-xs text-[#8993a4]">
@@ -478,12 +553,8 @@ export const TicketDetailPage: React.FC = () => {
               </div>
             )}
 
-            {/* Divider */}
-            {canReply && merged.length > 0 && (
-              <div className="border-t border-[#ebecf0]" />
-            )}
+            {canReply && merged.length > 0 && <div className="border-t border-[#ebecf0]" />}
 
-            {/* ── Comments list — no scroll, grows naturally ── */}
             <div className="px-6">
               {threadLoading ? (
                 <div className="flex items-center justify-center py-12">
@@ -496,21 +567,34 @@ export const TicketDetailPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-[#f0f1f3]">
-                  {merged.map(entry =>
+                  {merged.map((entry) =>
                     entry.kind === 'message'
-                      ? <TextBubble key={`m-${entry.data.id}`} item={entry.data} agentName={agentName} />
-                      : <AttachmentBubble key={`a-${entry.data.id}`} att={entry.data} ticketId={t.id} isOwn={entry.side === 'customer'} agentName={agentName} />
+                      ? (
+                        <TextBubble
+                          key={`m-${entry.data.id}`}
+                          item={entry.data}
+                          authorNames={authorNames}
+                          currentUserId={currentUserId}
+                          currentUserInitials={currentUserInitials}
+                        />
+                      ) : (
+                        <AttachmentBubble
+                          key={`a-${entry.data.id}`}
+                          att={entry.data}
+                          ticketId={t.id}
+                          isOwn={entry.side === 'customer'}
+                          authorNames={authorNames}
+                          currentUserInitials={currentUserInitials}
+                        />
+                      )
                   )}
                 </div>
               )}
               <div ref={threadEndRef} />
             </div>
-
           </div>
 
-          {/* Bottom padding */}
           <div className="h-4" />
-
         </div>
       </div>
     </MainLayout>

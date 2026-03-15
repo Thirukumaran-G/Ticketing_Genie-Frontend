@@ -1,4 +1,3 @@
-// src/features/settings/components/SettingsPage.tsx
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,10 +24,10 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
-  const [pwLoading, setPwLoading] = useState(false);
+  const [pwLoading, setPwLoading]     = useState(false);
   const [prefLoading, setPrefLoading] = useState(false);
-  const [prefSaving, setPrefSaving] = useState(false);
-  const [preferred, setPreferred] = useState<'email' | 'in_app'>('email');
+  const [prefSaving, setPrefSaving]   = useState(false);
+  const [preferred, setPreferred]     = useState<'email' | 'in_app'>('email');
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<PwForm>({
     resolver: zodResolver(pwSchema),
@@ -141,8 +140,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
                     className={[
                       'p-4 rounded-xl border text-left transition-all duration-150',
                       preferred === option
-                        ? 'border-white/30 bg-white/5 ring-1 ring-white/20'
-                        : 'border-slate-200 bg-blue-50/50 hover:border-slate-300',
+                        ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-200'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -150,7 +149,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
                         'w-2 h-2 rounded-full flex-shrink-0',
                         preferred === option ? 'bg-blue-600' : 'bg-slate-300',
                       ].join(' ')} />
-                      <span className="text-slate-900 font-semibold text-xs uppercase tracking-wider">
+                      <span className={[
+                        'font-semibold text-xs uppercase tracking-wider',
+                        preferred === option ? 'text-blue-700' : 'text-slate-900',
+                      ].join(' ')}>
                         {option === 'in_app' ? 'In-App' : 'Email'}
                       </span>
                     </div>
@@ -174,4 +176,4 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ navItems }) => {
       </div>
     </MainLayout>
   );
-};  
+};

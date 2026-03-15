@@ -1,19 +1,45 @@
 // src/features/tickets/components/teamlead/TLTicketsPage.tsx
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, isPast } from 'date-fns';
 import { clsx } from 'clsx';
 import { MainLayout } from '../../../../layouts/MainLayout';
 import { PageLoader } from '../../../../components/ui/index';
 import { StatusBadge, SeverityDot, PriorityLabel, SLABreachPill } from '../shared/TicketBadges';
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
-import { fetchTLTickets } from '../../slices/ticketsSlice';
+import { fetchTLTickets, fetchTeamOverview } from '../../slices/ticketsSlice';
 import { tlNav } from './teamleadNav';
 import { TLTicketDetail } from '../../../../types';
 
 const STATUSES = ['all', 'new', 'open', 'in_progress', 'on_hold', 'resolved', 'closed'];
 
-// ── Unassigned highlight badge ────────────────────────────────────────────────
+// ── Breach helpers ────────────────────────────────────────────────────────────
+
+function isResponseBreached(t: TLTicketDetail): boolean {
+  if (t.response_sla_breached_at) return true;
+  if (
+    t.sla_response_due &&
+    !t.first_response_at &&
+    isPast(new Date(t.sla_response_due))
+  ) return true;
+  return false;
+}
+
+function isResolutionBreached(t: TLTicketDetail): boolean {
+  if (t.sla_breached_at) return true;
+  if (
+    t.sla_resolve_due &&
+    !['resolved', 'closed'].includes(t.status) &&
+    isPast(new Date(t.sla_resolve_due))
+  ) return true;
+  return false;
+}
+
+function isAnyBreached(t: TLTicketDetail): boolean {
+  return isResponseBreached(t) || isResolutionBreached(t);
+}
+
+// ── Badges ────────────────────────────────────────────────────────────────────
 
 const UnassignedBadge: React.FC = () => (
   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-950/60 border border-orange-900/50 text-orange-400">
@@ -22,20 +48,27 @@ const UnassignedBadge: React.FC = () => (
   </span>
 );
 
+const ResponseBreachBadge: React.FC = () => (
+  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-red-950/60 border border-red-900/50 text-red-400">
+    <span className="w-1 h-1 rounded-full bg-red-400 animate-pulse" />
+    Response SLA Breached
+  </span>
+);
+
 // ── Stats bar ─────────────────────────────────────────────────────────────────
 
 const StatsBar: React.FC<{ tickets: TLTicketDetail[] }> = ({ tickets }) => {
-  const unassigned  = tickets.filter(t => !t.assigned_to).length;
-  const breached    = tickets.filter(t => t.sla_breached_at || t.response_sla_breached_at).length;
-  const inProgress  = tickets.filter(t => t.status === 'in_progress').length;
-  const resolved    = tickets.filter(t => t.status === 'resolved').length;
+  const unassigned = tickets.filter(t => !t.assigned_to).length;
+  const breached   = tickets.filter(t => isAnyBreached(t)).length;
+  const inProgress = tickets.filter(t => t.status === 'in_progress').length;
+  const resolved   = tickets.filter(t => t.status === 'resolved').length;
 
   const stats = [
-    { label: 'Total',       value: tickets.length,  color: 'text-slate-900' },
-    { label: 'Unassigned',  value: unassigned,       color: unassigned > 0 ? 'text-orange-400' : 'text-slate-900' },
-    { label: 'SLA Breach',  value: breached,         color: breached > 0  ? 'text-red-400'    : 'text-slate-900' },
-    { label: 'In Progress', value: inProgress,       color: 'text-blue-400' },
-    { label: 'Resolved',    value: resolved,         color: 'text-green-400' },
+    { label: 'Total',       value: tickets.length, color: 'text-slate-900' },
+    { label: 'Unassigned',  value: unassigned,      color: unassigned > 0 ? 'text-orange-400' : 'text-slate-900' },
+    { label: 'SLA Breach',  value: breached,        color: breached > 0   ? 'text-red-400'    : 'text-slate-900' },
+    { label: 'In Progress', value: inProgress,      color: 'text-blue-400' },
+    { label: 'Resolved',    value: resolved,        color: 'text-green-400' },
   ];
 
   return (
@@ -52,15 +85,21 @@ const StatsBar: React.FC<{ tickets: TLTicketDetail[] }> = ({ tickets }) => {
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-const Row: React.FC<{ ticket: TLTicketDetail }> = ({ ticket }) => {
-  const breached    = !!(ticket.sla_breached_at || ticket.response_sla_breached_at);
-  const isUnassigned = !ticket.assigned_to;
+const Row: React.FC<{
+  ticket:    TLTicketDetail;
+  agentName: string | null;
+}> = ({ ticket, agentName }) => {
+  const respBreached  = isResponseBreached(ticket);
+  const resolBreached = isResolutionBreached(ticket);
+  const anyBreached   = respBreached || resolBreached;
+  const isUnassigned  = !ticket.assigned_to;
 
   return (
     <Link to={`/tickets/teamlead/${ticket.id}`} className="group block">
       <div className={clsx(
         'flex items-center gap-4 px-6 py-4 border-b border-slate-100 hover:bg-blue-50/60 transition-colors',
         isUnassigned && 'bg-orange-950/10 hover:bg-orange-950/20',
+        anyBreached && !isUnassigned && 'bg-red-950/5 hover:bg-red-950/10',
       )}>
         {/* Priority bar */}
         <div className={clsx('w-1 h-10 rounded-full flex-shrink-0', {
@@ -68,7 +107,7 @@ const Row: React.FC<{ ticket: TLTicketDetail }> = ({ ticket }) => {
           'bg-orange-500': ticket.priority === 'P1',
           'bg-yellow-500': ticket.priority === 'P2',
           'bg-blue-500':   ticket.priority === 'P3',
-          'bg-slate-300':   !ticket.priority,
+          'bg-slate-300':  !ticket.priority,
         })} />
 
         {/* Ticket number */}
@@ -82,13 +121,14 @@ const Row: React.FC<{ ticket: TLTicketDetail }> = ({ ticket }) => {
             <p className="text-sm text-slate-800 font-medium truncate group-hover:text-blue-700">
               {ticket.title ?? '(No title)'}
             </p>
-            {breached && <SLABreachPill />}
-            {isUnassigned && <UnassignedBadge />}
+            {resolBreached && <SLABreachPill />}
+            {respBreached  && <ResponseBreachBadge />}
+            {isUnassigned  && <UnassignedBadge />}
           </div>
           <p className="text-xs text-slate-600 mt-0.5">
             {isUnassigned
               ? <span className="text-orange-400/70">No agent assigned</span>
-              : `Agent: ${ticket.assigned_to!.slice(0, 8)}…`
+              : <span>{agentName ?? `${ticket.assigned_to!.slice(0, 8)}…`}</span>
             }
             {' · '}{format(new Date(ticket.created_at), 'MMM d, yyyy')}
           </p>
@@ -128,19 +168,30 @@ const Row: React.FC<{ ticket: TLTicketDetail }> = ({ ticket }) => {
 
 export const TLTicketsPage: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { tlTickets, isLoading } = useAppSelector((s) => s.tickets);
-  const [filter, setFilter]      = useState('all');
+  const { tlTickets, teamOverview, isLoading } = useAppSelector((s) => s.tickets);
+  const [filter, setFilter]                 = useState('all');
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
 
   useEffect(() => {
     dispatch(fetchTLTickets(filter === 'all' ? undefined : filter));
+    dispatch(fetchTeamOverview());
   }, [dispatch, filter]);
+
+  // user_id → full_name lookup from teamOverview agents
+  const agentNameMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of teamOverview?.agents ?? []) {
+      if (a.full_name) map[String(a.user_id)] = a.full_name;
+    }
+    return map;
+  }, [teamOverview]);
 
   const displayed = showUnassignedOnly
     ? tlTickets.filter(t => !t.assigned_to)
     : tlTickets;
 
-  const unassignedCount = tlTickets.filter(t => !t.assigned_to).length;
+  const unassignedCount     = tlTickets.filter(t => !t.assigned_to).length;
+  const responseBreachCount = tlTickets.filter(t => isResponseBreached(t)).length;
 
   return (
     <MainLayout navItems={tlNav} pageTitle="All Team Tickets">
@@ -157,10 +208,14 @@ export const TLTicketsPage: React.FC = () => {
                   · {unassignedCount} unassigned
                 </span>
               )}
+              {responseBreachCount > 0 && (
+                <span className="ml-2 text-red-400 font-medium">
+                  · {responseBreachCount} response SLA breached
+                </span>
+              )}
             </p>
           </div>
 
-          {/* Unassigned toggle */}
           {unassignedCount > 0 && (
             <button
               onClick={() => setShowUnassignedOnly(v => !v)}
@@ -217,7 +272,13 @@ export const TLTicketsPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            displayed.map((t) => <Row key={t.id} ticket={t} />)
+            displayed.map((t) => (
+              <Row
+                key={t.id}
+                ticket={t}
+                agentName={t.assigned_to ? (agentNameMap[String(t.assigned_to)] ?? null) : null}
+              />
+            ))
           )}
         </div>
       </div>

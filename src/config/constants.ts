@@ -28,5 +28,5 @@ export type TicketStatus = typeof TICKET_STATUSES[number];
 export const DATE_FORMAT        = 'MMM d, yyyy';
 export const DATE_TIME_FORMAT   = 'MMM d, yyyy · h:mm a';
 
-export const ENVIRONMENTS = ['production', 'staging', 'development', 'local'] as const;
+export const ENVIRONMENTS = ['production', 'staging'] as const;
 export type Environment = typeof ENVIRONMENTS[number];

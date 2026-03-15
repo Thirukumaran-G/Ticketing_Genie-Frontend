@@ -5,26 +5,43 @@ import { authService, RegisterData } from '../services/authService';
 import { setTokens, clearTokens } from '../../../lib/axios';
 
 const init: AuthState = {
-  user: null,
-  accessToken: null,
-  refreshToken: null,
+  user:            null,
+  accessToken:     null,
+  refreshToken:    null,
   isAuthenticated: false,
-  isLoading: false,
-  error: null,
+  isLoading:       false,
+  isInitialising:  true,
+  error:           null,
 };
 
-const apiErr = (e: unknown) =>
-  (e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Something went wrong';
+const apiErr = (e: unknown): string => {
+  const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
+  if (!data) return 'Something went wrong. Please try again.';
+  if (typeof data.message === 'string' && data.message) {
+    if (
+      data.error_code === 'VALIDATION_ERROR' &&
+      Array.isArray(data.details) &&
+      data.details.length > 0
+    ) {
+      const first = data.details[0] as Record<string, unknown>;
+      const field = typeof first.field   === 'string' ? first.field   : '';
+      const msg   = typeof first.message === 'string' ? first.message : '';
+      if (field && msg) return `${field}: ${msg}`;
+      if (msg)          return msg;
+    }
+    return data.message;
+  }
+  return 'Something went wrong. Please try again.';
+};
 
-// Login: get tokens → set them in axios module → fetch /auth/me → return user
 export const loginThunk = createAsyncThunk(
   'auth/login',
   async (p: { email: string; password: string }, { rejectWithValue }) => {
     try {
       const tokens = await authService.login(p.email, p.password);
-      // Set tokens in axios BEFORE calling /auth/me so the Bearer header is sent
+      // Pass token explicitly — Redux not updated yet so interceptor returns null
+      const user = await authService.me(tokens.access_token);
       setTokens(tokens.access_token, tokens.refresh_token);
-      const user = await authService.me();
       return { ...tokens, user };
     } catch (e) {
       return rejectWithValue(apiErr(e));
@@ -32,14 +49,14 @@ export const loginThunk = createAsyncThunk(
   },
 );
 
-// Register: updated to use full_name and ph_no
 export const registerThunk = createAsyncThunk(
   'auth/register',
   async (p: RegisterData, { rejectWithValue }) => {
     try {
       const tokens = await authService.register(p);
+      // Pass token explicitly — Redux not updated yet so interceptor returns null
+      const user = await authService.me(tokens.access_token);
       setTokens(tokens.access_token, tokens.refresh_token);
-      const user = await authService.me();
       return { ...tokens, user };
     } catch (e) {
       return rejectWithValue(apiErr(e));
@@ -49,57 +66,69 @@ export const registerThunk = createAsyncThunk(
 
 export const logoutThunk = createAsyncThunk(
   'auth/logout',
-  async (_, { getState }) => {
-    const state = getState() as { auth: AuthState };
-    const rt = state.auth.refreshToken;
-    if (rt) await authService.logout(rt).catch(() => {});
+  async () => {
+    try {
+      await authService.logout();
+    } catch {}
     clearTokens();
   },
 );
 
 const authSlice = createSlice({
-  name: 'auth',
+  name:         'auth',
   initialState: init,
   reducers: {
     setUser: (s, a: PayloadAction<User>) => { s.user = a.payload; },
     clearError: (s) => { s.error = null; },
     forceLogout: (s) => {
-      s.user = null; s.accessToken = null; s.refreshToken = null; s.isAuthenticated = false;
+      s.user            = null;
+      s.accessToken     = null;
+      s.refreshToken    = null;
+      s.isAuthenticated = false;
+      s.isInitialising  = false;
       clearTokens();
     },
     updateTokens: (s, a: PayloadAction<{ access: string; refresh: string }>) => {
-      s.accessToken = a.payload.access;
-      s.refreshToken = a.payload.refresh;
+      s.accessToken     = a.payload.access;
+      s.refreshToken    = a.payload.refresh;
       s.isAuthenticated = true;
       setTokens(a.payload.access, a.payload.refresh);
     },
   },
   extraReducers: (b) => {
-    // login
-    b.addCase(loginThunk.pending, (s) => { s.isLoading = true; s.error = null; });
+    b.addCase(loginThunk.pending,   (s) => { s.isLoading = true; s.error = null; });
     b.addCase(loginThunk.fulfilled, (s, a) => {
-      s.isLoading = false;
-      s.accessToken = a.payload.access_token;
-      s.refreshToken = a.payload.refresh_token;
-      s.user = a.payload.user;
+      s.isLoading       = false;
+      s.accessToken     = a.payload.access_token;
+      s.refreshToken    = a.payload.refresh_token;
+      s.user            = a.payload.user;
       s.isAuthenticated = true;
+      s.isInitialising  = false;
     });
-    b.addCase(loginThunk.rejected, (s, a) => { s.isLoading = false; s.error = a.payload as string; });
+    b.addCase(loginThunk.rejected, (s, a) => {
+      s.isLoading = false;
+      s.error     = a.payload as string;
+    });
 
-    // register
-    b.addCase(registerThunk.pending, (s) => { s.isLoading = true; s.error = null; });
+    b.addCase(registerThunk.pending,   (s) => { s.isLoading = true; s.error = null; });
     b.addCase(registerThunk.fulfilled, (s, a) => {
-      s.isLoading = false;
-      s.accessToken = a.payload.access_token;
-      s.refreshToken = a.payload.refresh_token;
-      s.user = a.payload.user;
+      s.isLoading       = false;
+      s.accessToken     = a.payload.access_token;
+      s.refreshToken    = a.payload.refresh_token;
+      s.user            = a.payload.user;
       s.isAuthenticated = true;
+      s.isInitialising  = false;
     });
-    b.addCase(registerThunk.rejected, (s, a) => { s.isLoading = false; s.error = a.payload as string; });
+    b.addCase(registerThunk.rejected, (s, a) => {
+      s.isLoading = false;
+      s.error     = a.payload as string;
+    });
 
-    // logout
     b.addCase(logoutThunk.fulfilled, (s) => {
-      s.user = null; s.accessToken = null; s.refreshToken = null; s.isAuthenticated = false;
+      s.user            = null;
+      s.accessToken     = null;
+      s.refreshToken    = null;
+      s.isAuthenticated = false;
     });
   },
 });

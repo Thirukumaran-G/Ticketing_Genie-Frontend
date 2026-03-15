@@ -4,6 +4,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAppSelector } from './store';
 import { Spinner } from '../components/ui';
 import { ROLES, ROLE_HOME } from '../config/constants';
+import { TemplatesPage } from '../features/settings/components/TemplatesPage';
+import { TLTicketGroupsPage } from '../features/tickets/components/teamlead/TLTicketGroupsPage';
+
+
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const LoginPage        = lazy(() => import('../features/auth/components/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -116,6 +120,9 @@ export const AppRouter: React.FC = () => (
 
         {/* Settings — all roles */}
         <Route path="/settings" element={<ProtectedRoute><SettingsPageWrapper /></ProtectedRoute>} />
+
+        <Route path="/settings/templates" element={<TemplatesPage />} />
+        <Route path="/tickets/groups"     element={<TLTicketGroupsPage />} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
