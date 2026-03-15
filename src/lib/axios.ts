@@ -4,63 +4,72 @@ import { ENV } from '../config/env';
 
 const RT_KEY = '__tg_rt__';
 
-let _accessToken: string | null = null;
 let _onLogout: () => void = () => { window.location.href = '/login'; };
+let _getAccessToken: () => string | null = () => null;
 
-export const setTokens = (access: string, refresh: string) => {
-  _accessToken = access;
-  localStorage.setItem(RT_KEY, refresh);
-};
-
-export const setAccessToken = (access: string) => {
-  _accessToken = access;
-};
-
-export const clearTokens = () => {
-  _accessToken = null;
+export const setTokens = (_access: string, _refresh: string) => {
   localStorage.removeItem(RT_KEY);
 };
-
-export const getStoredRefreshToken = (): string | null =>
-  localStorage.getItem(RT_KEY);
-
+export const setAccessToken = (_access: string) => {};
+export const clearTokens = () => { localStorage.removeItem(RT_KEY); };
+export const getStoredRefreshToken = (): string | null => null;
 export const injectLogout = (fn: () => void) => { _onLogout = fn; };
 
+// Called once in App.tsx to give axios access to the Redux access token
+// without creating a circular import (axios → store → axios).
+export const injectGetAccessToken = (fn: () => string | null) => {
+  _getAccessToken = fn;
+};
+
 // ── Axios clients ─────────────────────────────────────────────────────────────
+
 export const authClient: AxiosInstance = axios.create({
-  baseURL: ENV.AUTH_BASE,
-  withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  baseURL:         ENV.AUTH_BASE,
+  withCredentials: true,   // sends refresh_token httpOnly cookie automatically
+  headers:         { 'Content-Type': 'application/json' },
 });
 
 export const ticketClient: AxiosInstance = axios.create({
-  baseURL: ENV.TICKET_BASE,
+  baseURL:         ENV.TICKET_BASE,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  headers:         { 'Content-Type': 'application/json' },
 });
 
 export const notificationClient: AxiosInstance = axios.create({
-  baseURL: ENV.NOTIFICATION_BASE,
+  baseURL:         ENV.NOTIFICATION_BASE,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  headers:         { 'Content-Type': 'application/json' },
 });
 
-// ── Auth token injection ──────────────────────────────────────────────────────
-const addToken = (cfg: InternalAxiosRequestConfig) => {
-  if (_accessToken && cfg.headers) cfg.headers.Authorization = `Bearer ${_accessToken}`;
-  return cfg;
+// ── Request interceptor — attach access token as Bearer header ────────────────
+// Access token lives in Redux memory (not a cookie).
+// We inject it into every outgoing request here so all clients stay in sync.
+
+const applyAuthHeader = (instance: AxiosInstance) => {
+  instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    const token = _getAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
 };
 
-authClient.interceptors.request.use(addToken);
-ticketClient.interceptors.request.use(addToken);
-notificationClient.interceptors.request.use(addToken);
+applyAuthHeader(authClient);
+applyAuthHeader(ticketClient);
+applyAuthHeader(notificationClient);
 
-// ── 401 → auto-refresh → replay ──────────────────────────────────────────────
+// ── Response interceptor — 401 → silent refresh → replay ─────────────────────
+
+// These URLs must never trigger a silent refresh — prevents infinite loops.
+const SKIP_REFRESH = ['/refresh', '/login', '/logout'];
+const shouldSkip = (url = '') => SKIP_REFRESH.some((u) => url.includes(u));
+
 let isRefreshing = false;
-let waitList: Array<{ ok: (t: string) => void; fail: (e: unknown) => void }> = [];
+let waitList: Array<{ ok: () => void; fail: (e: unknown) => void }> = [];
 
-const drainQueue = (err: unknown, token: string | null) => {
-  waitList.forEach(({ ok, fail }) => (err ? fail(err) : ok(token!)));
+const drainQueue = (err: unknown) => {
+  waitList.forEach(({ ok, fail }) => (err ? fail(err) : ok()));
   waitList = [];
 };
 
@@ -69,42 +78,37 @@ const applyRefreshInterceptor = (instance: AxiosInstance) => {
     (r) => r,
     async (error: AxiosError) => {
       const orig = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-      const rt = getStoredRefreshToken();
 
-      if (error.response?.status !== 401 || orig._retry || !rt) {
+      if (
+        error.response?.status !== 401 ||
+        orig._retry ||
+        shouldSkip(orig.url)
+      ) {
         return Promise.reject(error);
       }
 
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           waitList.push({
-            ok: (token) => {
-              if (orig.headers) orig.headers.Authorization = `Bearer ${token}`;
-              resolve(instance(orig));
-            },
+            ok:   () => resolve(instance(orig)),
             fail: reject,
           });
         });
       }
 
-      orig._retry = true;
+      orig._retry  = true;
       isRefreshing = true;
 
       try {
-        const { data } = await authClient.post<{
-          access_token: string;
-          refresh_token: string;
-        }>('/refresh', { refresh_token: rt });
-
-        setTokens(data.access_token, data.refresh_token);
-        const fn = (window as unknown as Record<string, unknown>).__tg_setTokens;
-        if (typeof fn === 'function') fn(data.access_token, data.refresh_token);
-
-        drainQueue(null, data.access_token);
-        if (orig.headers) orig.headers.Authorization = `Bearer ${data.access_token}`;
+        // No body — server reads refresh_token from httpOnly cookie.
+        // Server responds with new access token in body + rotates refresh cookie.
+        // The updateTokens dispatch in App.tsx wires the new access token into
+        // Redux so _getAccessToken() returns it on the replayed request.
+        await authClient.post('/refresh', {});
+        drainQueue(null);
         return instance(orig);
       } catch (err) {
-        drainQueue(err, null);
+        drainQueue(err);
         clearTokens();
         _onLogout();
         return Promise.reject(err);

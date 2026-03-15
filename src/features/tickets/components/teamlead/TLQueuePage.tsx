@@ -1,4 +1,4 @@
-// src/features/tickets/components/teamlead/TLQueuePage.tsx
+// TLQueuePage
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -34,7 +34,7 @@ const UnassignReasonBadge: React.FC<{ reason?: string; justification?: string }>
 // ── Queue Row ─────────────────────────────────────────────────────────────────
 
 const QueueRow: React.FC<{
-  ticket: TicketQueueItem & { _unassign_reason?: string; _justification?: string };
+  ticket:   TicketQueueItem & { _unassign_reason?: string; _justification?: string };
   onAssign: (ticket: TicketQueueItem) => void;
 }> = ({ ticket, onAssign }) => (
   <div className="flex items-center gap-4 px-6 py-4 border-b border-blue-100 hover:bg-slate-50/30 transition-colors">
@@ -43,7 +43,7 @@ const QueueRow: React.FC<{
       'bg-orange-500': ticket.priority === 'P1',
       'bg-yellow-500': ticket.priority === 'P2',
       'bg-blue-500':   ticket.priority === 'P3',
-      'bg-slate-300':   !ticket.priority,
+      'bg-slate-300':  !ticket.priority,
     })} />
 
     <div className="flex-shrink-0 w-32">
@@ -68,7 +68,6 @@ const QueueRow: React.FC<{
       <p className="text-xs text-slate-600 mt-0.5">
         {format(new Date(ticket.created_at), 'MMM d, yyyy · h:mm a')}
       </p>
-      {/* Show unassign reason if ticket was returned by agent */}
       <UnassignReasonBadge
         reason={(ticket as any)._unassign_reason}
         justification={(ticket as any)._justification}
@@ -99,7 +98,7 @@ const QueueRow: React.FC<{
   </div>
 );
 
-// ── New ticket flash notification ─────────────────────────────────────────────
+// ── New ticket toast ──────────────────────────────────────────────────────────
 
 const NewTicketToast: React.FC<{ count: number; onView: () => void }> = ({ count, onView }) => (
   <div className="flex items-center gap-3">
@@ -126,11 +125,10 @@ export const TLQueuePage: React.FC = () => {
   const { tlQueue, teamOverview, isLoading } = useAppSelector((s) => s.tickets);
   const { accessToken } = useAppSelector((s) => s.auth);
 
-  const [sseStatus, setSseStatus]   = useState<'connecting' | 'connected' | 'error'>('connecting');
-  const [newCount, setNewCount]     = useState(0);
-  const sseRef                      = useRef<EventSource | null>(null);
+  const [sseStatus, setSseStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [newCount, setNewCount]   = useState(0);
+  const sseRef                    = useRef<EventSource | null>(null);
 
-  // Assign modal state
   const [assignModal, setAssignModal]     = useState(false);
   const [assignTicket, setAssignTicket]   = useState<TicketQueueItem | null>(null);
   const [selectedAgent, setSelectedAgent] = useState('');
@@ -141,7 +139,6 @@ export const TLQueuePage: React.FC = () => {
     dispatch(fetchTeamOverview());
   }, [dispatch]);
 
-  // SSE: /teamlead/queue/stream
   useEffect(() => {
     if (!accessToken) return;
     const es = new EventSource(
@@ -153,28 +150,19 @@ export const TLQueuePage: React.FC = () => {
     es.addEventListener('queue_update', (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
-        // Refresh queue
         dispatch(fetchTLQueue());
-
-        // Show specific toast if an agent unassigned
         if (data.reason === 'agent_unassigned') {
           setNewCount(prev => prev + 1);
           toast.custom(
             (t) => (
               <div className={clsx(
                 'bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 shadow-2xl max-w-sm transition-all',
-                t.visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+                t.visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2',
               )}>
-                <NewTicketToast
-                  count={1}
-                  onView={() => {
-                    setNewCount(0);
-                    toast.dismiss(t.id);
-                  }}
-                />
+                <NewTicketToast count={1} onView={() => { setNewCount(0); toast.dismiss(t.id); }} />
               </div>
             ),
-            { duration: 6000 }
+            { duration: 6000 },
           );
         }
       } catch { /* ignore parse errors */ }
@@ -196,21 +184,22 @@ export const TLQueuePage: React.FC = () => {
     if (!assignTicket || !selectedAgent) return;
     try {
       setAssigning(true);
-      await dispatch(manualAssignThunk({ ticketId: assignTicket.id, agent_user_id: selectedAgent }));
+      await dispatch(manualAssignThunk({ ticketId: assignTicket.id, agent_user_id: selectedAgent })).unwrap();
       toast.success('Ticket assigned');
       setAssignModal(false);
       setNewCount(prev => Math.max(0, prev - 1));
       dispatch(fetchTLQueue());
-    } catch {
-      toast.error('Assignment failed');
+    } catch (err: any) {
+      toast.error(typeof err === 'string' ? err : 'Assignment failed');
     } finally {
       setAssigning(false);
     }
   };
 
+  // Use full_name from overview — same source as TLTicketDetailPage
   const agentOptions = (teamOverview?.agents ?? []).map((a) => ({
-    value: a.user_id,
-    label: `Agent ${a.user_id.slice(0, 8)} (${a.open_tickets} open)`,
+    value: String(a.user_id),
+    label: `${a.full_name || 'Agent ' + String(a.user_id).slice(0, 8)} (${a.open_tickets} open)`,
   }));
 
   return (
@@ -257,7 +246,7 @@ export const TLQueuePage: React.FC = () => {
           </Button>
         </div>
 
-        {/* Agent workload summary strip */}
+        {/* Agent workload summary strip — shows real names */}
         {(teamOverview?.agents ?? []).length > 0 && (
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
             {(teamOverview?.agents ?? [])
@@ -265,7 +254,7 @@ export const TLQueuePage: React.FC = () => {
               .sort((a, b) => a.open_tickets - b.open_tickets)
               .map((agent) => (
                 <div
-                  key={agent.user_id}
+                  key={String(agent.user_id)}
                   className="flex-shrink-0 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
                 >
                   <div className={clsx('w-2 h-2 rounded-full flex-shrink-0', {
@@ -273,10 +262,10 @@ export const TLQueuePage: React.FC = () => {
                     'bg-yellow-500': agent.open_tickets > 3 && agent.open_tickets <= 7,
                     'bg-red-500':    agent.open_tickets > 7,
                   })} />
-                  <span className="text-xs text-slate-600 font-mono">
-                    {agent.user_id.slice(0, 8)}
+                  <span className="text-xs text-slate-700 font-medium">
+                    {agent.full_name || `Agent ${String(agent.user_id).slice(0, 8)}`}
                   </span>
-                  <span className="text-xs text-slate-600">
+                  <span className="text-xs text-slate-500">
                     {agent.open_tickets} open
                   </span>
                 </div>

@@ -11,7 +11,7 @@ import { fetchAgentAllTickets } from '../../slices/ticketsSlice';
 import { agentNav } from './agentNav';
 import { TicketDetail } from '../../../../types';
 
-const STATUSES = ['all', 'open', 'in_progress', 'on_hold', 'resolved', 'closed'];
+const STATUSES = ['all', 'new', 'open', 'acknowledged', 'in_progress', 'on_hold', 'resolved', 'closed'];
 
 // ── SLA Cell ──────────────────────────────────────────────────────────────────
 

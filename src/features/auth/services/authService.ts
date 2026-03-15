@@ -3,34 +3,43 @@ import { authClient } from '../../../lib/axios';
 import { User } from '../../../types';
 
 export interface TokenPair {
-  access_token: string;
+  access_token:  string;
   refresh_token: string;
+  expires_in:    number;
 }
 
 export interface RegisterData {
   full_name: string;
-  email: string;
-  password: string;
-  ph_no?: string | null;
+  email:     string;
+  password:  string;
+  ph_no?:    string | null;
 }
 
 export const authService = {
   login: (email: string, password: string) =>
     authClient.post<TokenPair>('/login', { email, password }).then((r) => r.data),
 
-  register: (data: RegisterData) =>
-    authClient.post<TokenPair>('/register', data).then((r) => r.data),
+  register: async (data: RegisterData): Promise<TokenPair> => {
+    await authClient.post('/register', data);
+    return authClient
+      .post<TokenPair>('/login', { email: data.email, password: data.password })
+      .then((r) => r.data);
+  },
 
-  logout: (refresh_token: string) =>
-    authClient.post('/logout', { refresh_token }).then((r) => r.data),
+  refresh: () =>
+    authClient.post<TokenPair>('/refresh', {}).then((r) => r.data),
 
-  refresh: (refresh_token: string) =>
+  logout: () =>
+    authClient.post('/logout', {}).then((r) => r.data),
+
+  // accessToken param — pass it explicitly right after login/refresh
+  // before Redux state has been updated, so the interceptor hasn't picked it up yet
+  me: (accessToken?: string) =>
     authClient
-      .post<{ access_token: string; refresh_token: string }>('/refresh', { refresh_token })
+      .get<User>('/me', {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      })
       .then((r) => r.data),
-
-  me: () =>
-    authClient.get<User>('/me').then((r) => r.data),
 
   forgotPassword: (email: string) =>
     authClient.post('/forgot-password', { email }).then((r) => r.data),
