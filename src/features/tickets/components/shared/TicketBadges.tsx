@@ -3,25 +3,35 @@ import React from 'react';
 import { clsx } from 'clsx';
 
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  new:          { label: 'New',          cls: 'bg-slate-100 text-slate-600' },
-  acknowledged: { label: 'Acknowledged', cls: 'bg-blue-50 text-blue-700' },
-  open:         { label: 'Open',         cls: 'bg-blue-50 text-blue-700' },
-  in_progress:  { label: 'In Progress',  cls: 'bg-amber-50 text-amber-700' },
-  on_hold:      { label: 'On Hold',      cls: 'bg-orange-50 text-orange-700' },
-  resolved:     { label: 'Resolved',     cls: 'bg-green-50 text-green-700' },
-  closed:       { label: 'Closed',       cls: 'bg-slate-100 text-slate-500' },
+  new:          { label: 'New',          cls: 'bg-slate-100 text-slate-600 border border-slate-200' },
+  acknowledged: { label: 'Acknowledged', cls: 'bg-blue-50 text-blue-600 border border-blue-200' },
+  assigned:     { label: 'Assigned',     cls: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
+  in_progress:  { label: 'In Progress',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  on_hold:      { label: 'On Hold',      cls: 'bg-orange-50 text-orange-700 border border-orange-200' },
+  resolved:     { label: 'Resolved',     cls: 'bg-green-50 text-green-700 border border-green-200' },
+  closed:       { label: 'Closed',       cls: 'bg-slate-100 text-slate-500 border border-slate-200' },
+  reopened:     { label: 'Reopened',     cls: 'bg-rose-50 text-rose-700 border border-rose-200' },
 };
 
 const SEV_DOT: Record<string, string> = {
-  critical: 'bg-red-500', high: 'bg-orange-500', medium: 'bg-amber-400', low: 'bg-blue-500',
+  critical: 'bg-red-500',
+  high:     'bg-orange-500',
+  medium:   'bg-amber-400',
+  low:      'bg-blue-500',
 };
 
 const PRI_CLS: Record<string, string> = {
-  P0: 'text-red-600', P1: 'text-orange-600', P2: 'text-amber-600', P3: 'text-blue-600',
+  P0: 'text-red-600',
+  P1: 'text-orange-600',
+  P2: 'text-amber-600',
+  P3: 'text-blue-600',
 };
 
 export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
-  const cfg = STATUS_CFG[status] ?? STATUS_CFG.new;
+  const cfg = STATUS_CFG[status] ?? {
+    label: status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    cls:   'bg-slate-100 text-slate-600 border border-slate-200',
+  };
   return (
     <span className={clsx('inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold', cfg.cls)}>
       {cfg.label}
@@ -38,7 +48,7 @@ export const PriorityLabel: React.FC<{ priority: string }> = ({ priority }) => (
 );
 
 export const SLABreachPill: React.FC = () => (
-  <span className="inline-flex items-center gap-1 text-xs text-red-600 font-semibold bg-red-50 px-2 py-0.5 rounded-full">
+  <span className="inline-flex items-center gap-1 text-xs text-red-600 font-semibold bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
     </svg>

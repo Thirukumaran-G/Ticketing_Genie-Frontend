@@ -92,7 +92,6 @@ export const AppRouter: React.FC = () => (
         <Route path="/tickets/:ticketId" element={<ProtectedRoute roles={[ROLES.CUSTOMER]}><TicketDetailPage /></ProtectedRoute>} />
 
         {/* Agent */}
-        <Route path="/tickets/queue"           element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentQueuePage /></ProtectedRoute>} />
         <Route path="/tickets/agent/all"       element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentAllTicketsPage /></ProtectedRoute>} />
         <Route path="/tickets/agent/:ticketId" element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentDetailPage /></ProtectedRoute>} />
 

@@ -30,8 +30,11 @@ export const adminAuthService = {
     authClient.get<CompanyResponse>(`/admin/companies/${id}`).then(r => r.data),
   createCompany:    (p: CompanyCreateRequest) =>
     authClient.post<CompanyResponse>('/admin/companies', p).then(r => r.data),
+  updateCompany:    (id: string, p: CompanyUpdateRequest) =>       // ← add this
+    authClient.patch<CompanyResponse>(`/admin/companies/${id}`, p).then(r => r.data),
   deleteCompany:    (id: string) =>
     authClient.delete(`/admin/companies/${id}`),
+
 
   // Products
   listProducts:     () =>

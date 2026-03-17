@@ -6,6 +6,7 @@ const RT_KEY = '__tg_rt__';
 
 let _onLogout: () => void = () => { window.location.href = '/login'; };
 let _getAccessToken: () => string | null = () => null;
+let _updateAccessToken: ((token: string) => void) | null = null;
 
 export const setTokens = (_access: string, _refresh: string) => {
   localStorage.removeItem(RT_KEY);
@@ -15,17 +16,19 @@ export const clearTokens = () => { localStorage.removeItem(RT_KEY); };
 export const getStoredRefreshToken = (): string | null => null;
 export const injectLogout = (fn: () => void) => { _onLogout = fn; };
 
-// Called once in App.tsx to give axios access to the Redux access token
-// without creating a circular import (axios → store → axios).
 export const injectGetAccessToken = (fn: () => string | null) => {
   _getAccessToken = fn;
+};
+
+export const injectUpdateAccessToken = (fn: (token: string) => void) => {
+  _updateAccessToken = fn;
 };
 
 // ── Axios clients ─────────────────────────────────────────────────────────────
 
 export const authClient: AxiosInstance = axios.create({
   baseURL:         ENV.AUTH_BASE,
-  withCredentials: true,   // sends refresh_token httpOnly cookie automatically
+  withCredentials: true,
   headers:         { 'Content-Type': 'application/json' },
 });
 
@@ -42,8 +45,6 @@ export const notificationClient: AxiosInstance = axios.create({
 });
 
 // ── Request interceptor — attach access token as Bearer header ────────────────
-// Access token lives in Redux memory (not a cookie).
-// We inject it into every outgoing request here so all clients stay in sync.
 
 const applyAuthHeader = (instance: AxiosInstance) => {
   instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -61,7 +62,6 @@ applyAuthHeader(notificationClient);
 
 // ── Response interceptor — 401 → silent refresh → replay ─────────────────────
 
-// These URLs must never trigger a silent refresh — prevents infinite loops.
 const SKIP_REFRESH = ['/refresh', '/login', '/logout'];
 const shouldSkip = (url = '') => SKIP_REFRESH.some((u) => url.includes(u));
 
@@ -100,11 +100,21 @@ const applyRefreshInterceptor = (instance: AxiosInstance) => {
       isRefreshing = true;
 
       try {
-        // No body — server reads refresh_token from httpOnly cookie.
-        // Server responds with new access token in body + rotates refresh cookie.
-        // The updateTokens dispatch in App.tsx wires the new access token into
-        // Redux so _getAccessToken() returns it on the replayed request.
-        await authClient.post('/refresh', {});
+        const refreshRes = await authClient.post<{ access_token: string }>('/refresh', {});
+        const newToken   = refreshRes.data?.access_token;
+
+        if (newToken) {
+          // 1. Push new access token into Redux so all future requests via
+          //    _getAccessToken() are correct immediately.
+          if (_updateAccessToken) {
+            _updateAccessToken(newToken);
+          }
+          // 2. Directly patch the Authorization header on every queued request's
+          //    original config so replays don't wait for a React re-render cycle.
+          orig.headers               = orig.headers ?? {};
+          orig.headers.Authorization = `Bearer ${newToken}`;
+        }
+
         drainQueue(null);
         return instance(orig);
       } catch (err) {

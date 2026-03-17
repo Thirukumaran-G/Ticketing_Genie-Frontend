@@ -5,20 +5,17 @@ import { differenceInMinutes, differenceInSeconds, formatDistanceToNow } from 'd
 export type SLAStatus = 'ok' | 'warning' | 'breached' | 'paused' | 'met';
 
 export interface SLATimer {
-  label:        string;         // "Response SLA" | "Resolution SLA"
+  label:        string;
   status:       SLAStatus;
-  pct:          number;         // 0–100 elapsed percentage
-  timeDisplay:  string;         // human-readable remaining / elapsed
-  dueAt:        string | null;  // ISO string
+  pct:          number;
+  timeDisplay:  string;
+  dueAt:        string | null;
   breachedAt:   string | null;
-  isMet:        boolean;        // first_response stamped / resolved_at set
-  isPaused:     boolean;        // ticket is on_hold
+  isMet:        boolean;
+  isPaused:     boolean;
+  wasBreached:  boolean;
 }
 
-/**
- * Compute response SLA timer state.
- * Customer-safe: never exposes breach status — returns 'met' or countdown only.
- */
 export function computeResponseSLA(params: {
   createdAt:             string;
   slaResponseDue:        string | null | undefined;
@@ -38,20 +35,20 @@ export function computeResponseSLA(params: {
 
   const now = new Date();
 
-  // Already responded
   if (firstResponseAt) {
     const mins = differenceInMinutes(new Date(firstResponseAt), new Date(createdAt));
     const hrs  = Math.floor(mins / 60);
     const label = hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
     return {
       label:       'Response SLA',
-      status:      'met',
+      status:      responseBreachedAt ? 'breached' : 'met',
       pct:         100,
       timeDisplay: isCustomer ? `Agent responded within ${label}` : `First response in ${label}`,
       dueAt:       slaResponseDue ?? null,
       breachedAt:  responseBreachedAt ?? null,
       isMet:       true,
       isPaused:    false,
+      wasBreached: !!(responseBreachedAt),
     };
   }
 
@@ -65,6 +62,7 @@ export function computeResponseSLA(params: {
       breachedAt:  null,
       isMet:       false,
       isPaused:    false,
+      wasBreached: false,
     };
   }
 
@@ -75,18 +73,18 @@ export function computeResponseSLA(params: {
   const pct     = Math.min((elapsedMs / totalMs) * 100, 100);
   const remainMins = differenceInMinutes(due, now);
 
-  // Breached
   if (responseBreachedAt || remainMins < 0) {
     if (isCustomer) {
       return {
         label:       'Response SLA',
-        status:      'ok',  // customer never sees breach
+        status:      'ok',
         pct:         100,
         timeDisplay: 'Our team is working on it',
         dueAt:       slaResponseDue,
         breachedAt:  responseBreachedAt ?? null,
         isMet:       false,
         isPaused:    false,
+        wasBreached: false,
       };
     }
     const overMins = Math.abs(remainMins);
@@ -101,6 +99,7 @@ export function computeResponseSLA(params: {
       breachedAt:  responseBreachedAt ?? null,
       isMet:       false,
       isPaused:    false,
+      wasBreached: true,
     };
   }
 
@@ -123,6 +122,7 @@ export function computeResponseSLA(params: {
       breachedAt:  null,
       isMet:       false,
       isPaused:    false,
+      wasBreached: false,
     };
   }
 
@@ -135,13 +135,10 @@ export function computeResponseSLA(params: {
     breachedAt:  responseBreachedAt ?? null,
     isMet:       false,
     isPaused:    false,
+    wasBreached: false,
   };
 }
 
-/**
- * Compute resolution SLA timer state.
- * Handles on_hold pause: subtracts accumulated hold time from elapsed.
- */
 export function computeResolutionSLA(params: {
   createdAt:                    string;
   slaResolveDue:                string | null | undefined;
@@ -166,17 +163,17 @@ export function computeResolutionSLA(params: {
   const now      = new Date();
   const isPaused = status === 'on_hold';
 
-  // Already resolved
   if (resolvedAt) {
     return {
       label:       'Resolution SLA',
-      status:      'met',
+      status:      slaBreachedAt ? 'breached' : 'met',
       pct:         100,
       timeDisplay: `Resolved ${formatDistanceToNow(new Date(resolvedAt), { addSuffix: true })}`,
       dueAt:       slaResolveDue ?? null,
       breachedAt:  slaBreachedAt ?? null,
       isMet:       true,
       isPaused:    false,
+      wasBreached: !!(slaBreachedAt),
     };
   }
 
@@ -190,6 +187,7 @@ export function computeResolutionSLA(params: {
       breachedAt:  null,
       isMet:       false,
       isPaused,
+      wasBreached: false,
     };
   }
 
@@ -203,20 +201,19 @@ export function computeResolutionSLA(params: {
       breachedAt:  slaBreachedAt ?? null,
       isMet:       false,
       isPaused:    true,
+      wasBreached: false,
     };
   }
 
   const due     = new Date(slaResolveDue);
   const created = new Date(createdAt);
 
-  // Effective elapsed = raw elapsed minus hold time
-  const rawElapsedMins     = differenceInMinutes(now, created);
+  const rawElapsedMins       = differenceInMinutes(now, created);
   const effectiveElapsedMins = Math.max(rawElapsedMins - onHoldDurationAccumulated, 0);
-  const totalMins          = differenceInMinutes(due, created);
-  const pct                = Math.min((effectiveElapsedMins / Math.max(totalMins, 1)) * 100, 100);
-  const remainMins         = differenceInMinutes(due, now);
+  const totalMins            = differenceInMinutes(due, created);
+  const pct                  = Math.min((effectiveElapsedMins / Math.max(totalMins, 1)) * 100, 100);
+  const remainMins           = differenceInMinutes(due, now);
 
-  // Breached
   if (slaBreachedAt || remainMins < 0) {
     if (isCustomer) {
       return {
@@ -228,6 +225,7 @@ export function computeResolutionSLA(params: {
         breachedAt:  slaBreachedAt ?? null,
         isMet:       false,
         isPaused:    false,
+        wasBreached: false,
       };
     }
     const overMins  = Math.abs(remainMins);
@@ -242,6 +240,7 @@ export function computeResolutionSLA(params: {
       breachedAt:  slaBreachedAt ?? null,
       isMet:       false,
       isPaused:    false,
+      wasBreached: true,
     };
   }
 
@@ -264,6 +263,7 @@ export function computeResolutionSLA(params: {
       breachedAt:  null,
       isMet:       false,
       isPaused:    false,
+      wasBreached: false,
     };
   }
 
@@ -276,18 +276,18 @@ export function computeResolutionSLA(params: {
     breachedAt:  slaBreachedAt ?? null,
     isMet:       false,
     isPaused:    false,
+    wasBreached: false,
   };
 }
 
-/** Bar + status color mappings */
 export function slaBarColor(status: SLAStatus): string {
   switch (status) {
-    case 'met':     return 'bg-green-500';
-    case 'ok':      return 'bg-blue-500';
-    case 'warning': return 'bg-orange-400';
+    case 'met':      return 'bg-green-500';
+    case 'ok':       return 'bg-blue-500';
+    case 'warning':  return 'bg-orange-400';
     case 'breached': return 'bg-red-500';
-    case 'paused':  return 'bg-slate-400';
-    default:        return 'bg-blue-500';
+    case 'paused':   return 'bg-slate-400';
+    default:         return 'bg-blue-500';
   }
 }
 

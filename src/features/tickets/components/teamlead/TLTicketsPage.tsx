@@ -11,7 +11,7 @@ import { fetchTLTickets, fetchTeamOverview } from '../../slices/ticketsSlice';
 import { tlNav } from './teamleadNav';
 import { TLTicketDetail } from '../../../../types';
 
-const STATUSES = ['all', 'new', 'open', 'in_progress', 'on_hold', 'resolved', 'closed'];
+const STATUSES = ['all', 'assigned', 'in_progress', 'on_hold', 'resolved', 'closed'];
 
 // ── Breach helpers ────────────────────────────────────────────────────────────
 

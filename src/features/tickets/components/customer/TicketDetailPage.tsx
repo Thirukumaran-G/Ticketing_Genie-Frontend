@@ -52,11 +52,11 @@ function formatBytes(b: number | null) {
 
 function fileIcon(mime: string | null) {
   if (!mime) return '📄';
-  if (mime.startsWith('image/'))                                              return '🖼️';
-  if (mime === 'application/pdf')                                            return '📋';
-  if (mime.includes('zip') || mime.includes('tar'))                          return '🗜️';
+  if (mime.startsWith('image/'))                                                  return '🖼️';
+  if (mime === 'application/pdf')                                                return '📋';
+  if (mime.includes('zip') || mime.includes('tar'))                              return '🗜️';
   if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return '📊';
-  if (mime.includes('word') || mime.includes('document'))                    return '📝';
+  if (mime.includes('word') || mime.includes('document'))                        return '📝';
   return '📄';
 }
 
@@ -194,28 +194,25 @@ export const TicketDetailPage: React.FC = () => {
 
   const [thread, setThread]                     = useState<ThreadData | null>(null);
   const [threadLoading, setThreadLoading]       = useState(false);
-  // authorNames: conversation author_id → full_name (for message bubbles)
   const [authorNames, setAuthorNames]           = useState<Record<string, string>>({});
-  // assigneeName: resolved from t.assigned_to (for the details panel)
   const [assigneeName, setAssigneeName]         = useState<string | null>(null);
   const [replyText, setReplyText]               = useState('');
   const [replyError, setReplyError]             = useState('');
   const [sending, setSending]                   = useState(false);
   const [uploading, setUploading]               = useState(false);
+  const [closing, setClosing]                   = useState(false);
   const [commentFocused, setCommentFocused]     = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
 
-  // ── Load conversation thread + resolve message author names ───────────────
   const loadThread = async () => {
     if (!ticketId) return;
     try {
       setThreadLoading(true);
       const data  = await ticketsService.getThread(ticketId);
       setThread(data);
-      // Only conversation author_ids — completely separate from assignee
       const ids   = data.conversations.map((c) => c.author_id);
       const names = await ticketsService.resolveUserNames(ids);
       setAuthorNames(names);
@@ -223,9 +220,6 @@ export const TicketDetailPage: React.FC = () => {
     finally { setThreadLoading(false); }
   };
 
-  // ── Resolve assignee name from ticket's assigned_to field ─────────────────
-  // Runs independently whenever the ticket detail changes.
-  // Has nothing to do with conversation authors.
   useEffect(() => {
     if (!myTicketDetail?.assigned_to) {
       setAssigneeName(null);
@@ -260,9 +254,25 @@ export const TicketDetailPage: React.FC = () => {
       await ticketsService.replyToTicket(ticketId, replyText);
       setReplyText(''); setCommentFocused(false);
       toast.success('Comment added');
+      // Refetch ticket detail — status may have changed to 'open' if it was closed
+      dispatch(fetchMyTicket(ticketId));
       loadThread();
     } catch { toast.error('Failed to send'); }
     finally { setSending(false); }
+  };
+
+  const onClose = async () => {
+    if (!ticketId) return;
+    try {
+      setClosing(true);
+      await ticketsService.closeTicket(ticketId);
+      toast.success('Ticket closed');
+      dispatch(fetchMyTicket(ticketId));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to close ticket');
+    } finally {
+      setClosing(false);
+    }
   };
 
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -287,6 +297,9 @@ export const TicketDetailPage: React.FC = () => {
 
   const t           = myTicketDetail;
   const canReply    = !['closed', 'resolved'].includes(t.status);
+  // closed ticket: allow reply (it reopens), but show a banner hint
+  const canReplyOrReopen = !['resolved'].includes(t.status);
+  const canClose    = t.status === 'resolved';
   const productName = t.product_id ? products.find((p) => p.id === String(t.product_id))?.name ?? null : null;
   const tierInfo    = t.tier_snapshot ? getTierInfo(t.tier_snapshot) : null;
 
@@ -338,10 +351,36 @@ export const TicketDetailPage: React.FC = () => {
 
         <div className="px-6 py-6 flex flex-col gap-4">
 
-          {/* Title */}
-          <div>
-            <p className="text-[#44546f] text-xs font-mono mb-0.5">{t.ticket_number}</p>
-            <h1 className="text-[#172b4d] text-xl font-semibold leading-snug">{t.title ?? '(No title)'}</h1>
+          {/* Title + Close button row */}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[#44546f] text-xs font-mono mb-0.5">{t.ticket_number}</p>
+              <h1 className="text-[#172b4d] text-xl font-semibold leading-snug">{t.title ?? '(No title)'}</h1>
+            </div>
+
+            {/* Close ticket — only active when status === 'resolved' */}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={!canClose || closing}
+              title={canClose ? 'Mark this ticket as closed' : `Can only close a resolved ticket (current: ${t.status})`}
+              className={clsx(
+                'flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm font-medium transition-all',
+                canClose
+                  ? 'bg-white border-[#dfe1e6] text-[#172b4d] hover:border-[#b3bac5] hover:bg-[#f4f5f7] cursor-pointer'
+                  : 'bg-[#f4f5f7] border-[#dfe1e6] text-[#c1c7d0] cursor-not-allowed',
+              )}
+            >
+              {closing
+                ? <div className="w-3.5 h-3.5 border border-[#44546f] border-t-transparent rounded-full animate-spin" />
+                : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )
+              }
+              Close ticket
+            </button>
           </div>
 
           {/* SLA banner */}
@@ -397,11 +436,22 @@ export const TicketDetailPage: React.FC = () => {
                     </span>
                   </div>
                 )}
+                {/* Reopen count — only shown when ticket has been reopened at least once */}
+                {t.reopen_count > 0 && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
+                    <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Reopens</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#fff7e6] border border-[#f3cc4d] text-xs font-semibold text-[#974f0c]">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {t.reopen_count}×
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Col 2 */}
               <div>
-                {/* Assignee — resolved from t.assigned_to, independent of conversation authors */}
                 <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors">
                   <span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Assignee</span>
                   {t.assigned_to
@@ -477,8 +527,19 @@ export const TicketDetailPage: React.FC = () => {
               <h3 className="text-[#172b4d] text-sm font-semibold">Activity</h3>
             </div>
 
-            {canReply && (
+            {/* Reply box — shown for all non-resolved statuses, including closed (reopens it) */}
+            {canReplyOrReopen && (
               <div className="px-6 pb-4">
+                {/* Hint banner when ticket is closed */}
+                {t.status === 'closed' && (
+                  <div className="flex items-center gap-2 px-3 py-2 mb-3 bg-[#fffae6] border border-[#f3cc4d] rounded text-xs text-[#974f0c]">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    This ticket is closed. Adding a comment will automatically reopen it.
+                  </div>
+                )}
+
                 <div className="flex gap-3 items-start">
                   <div className="w-8 h-8 rounded-full bg-[#0052cc] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">
                     {currentUserInitials}
@@ -523,8 +584,8 @@ export const TicketDetailPage: React.FC = () => {
                         onFocus={() => setCommentFocused(true)}
                         onChange={(e) => { setReplyText(e.target.value); setReplyError(''); }}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-                        placeholder="Add a comment…"
-                        rows={commentFocused ? 3 : 1}
+                        placeholder={t.status === 'closed' ? 'Add a comment to reopen this ticket…' : 'Add a comment…'}
+                        rows={commentFocused ? 5 : 1}
                         className="w-full text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-transparent px-3 py-2.5 resize-none outline-none leading-relaxed"
                       />
                     </div>
@@ -535,7 +596,7 @@ export const TicketDetailPage: React.FC = () => {
                           disabled={sending || replyText.trim().length < 5}
                           className="px-3 py-1.5 bg-[#0052cc] text-white text-sm font-medium rounded hover:bg-[#0747a6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                           {sending && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
-                          Save
+                          {t.status === 'closed' ? 'Send & reopen' : 'Save'}
                         </button>
                         <button type="button"
                           onClick={() => { setReplyText(''); setReplyError(''); setCommentFocused(false); }}
@@ -553,7 +614,7 @@ export const TicketDetailPage: React.FC = () => {
               </div>
             )}
 
-            {canReply && merged.length > 0 && <div className="border-t border-[#ebecf0]" />}
+            {canReplyOrReopen && merged.length > 0 && <div className="border-t border-[#ebecf0]" />}
 
             <div className="px-6">
               {threadLoading ? (

@@ -1,15 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { clsx } from 'clsx';
-import { X, UserPlus, Loader2 } from 'lucide-react';
+import { X, UserPlus, Loader2, ChevronDown, ChevronRight, Building2 } from 'lucide-react';
 import { MainLayout } from '../../../layouts/MainLayout';
 import { Button, PageLoader, Badge } from '../../../components/ui';
 import { adminNav } from './adminNav';
 import { useAdminUsers } from '../hooks/useAdminUsers';
 import { adminAuthService } from '../services/adminAuthService';
-import { RoleResponse } from '../../../types';
+import { RoleResponse, AdminUserResponse, CompanyResponse } from '../../../types';
 import toast from 'react-hot-toast';
 
-// ── Role badge styles ─────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, string> = {
   admin:     'bg-purple-950 text-purple-300 border border-purple-800',
@@ -18,17 +18,19 @@ const ROLE_STYLES: Record<string, string> = {
   customer:  'bg-slate-100 text-slate-700 border border-slate-300',
 };
 
-// ── Create User Modal ─────────────────────────────────────────────────────────
-
-interface CreateUserModalProps {
-  onClose:  () => void;
-  onCreated: () => void;
-}
-
 const PREFERRED_CONTACT_OPTIONS = [
   { value: 'email', label: 'Email' },
-  { value: 'phone', label: 'Phone' },
+  { value: 'in_app', label: 'In App' },
 ];
+
+const FILTER_ROLES = ['all', 'admin', 'agent', 'team_lead', 'customer'];
+
+// ─── Create User Modal ────────────────────────────────────────────────────────
+
+interface CreateUserModalProps {
+  onClose:   () => void;
+  onCreated: () => void;
+}
 
 const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated }) => {
   const { createUser, creating } = useAdminUsers();
@@ -42,10 +44,8 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
     role:              '',
     preferred_contact: 'email',
   });
-
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Fetch roles from DB on mount
   useEffect(() => {
     adminAuthService.listRoles()
       .then(data => {
@@ -58,9 +58,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.email.trim())          e.email = 'Email is required';
+    if (!form.email.trim())                     e.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email address';
-    if (!form.role)                  e.role  = 'Please select a role';
+    if (!form.role)                             e.role  = 'Please select a role';
     return e;
   };
 
@@ -68,7 +68,6 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
-
     try {
       await createUser({
         email:             form.email.trim().toLowerCase(),
@@ -80,8 +79,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
       onCreated();
       onClose();
     } catch (err: any) {
-      const msg = err?.response?.data?.detail ?? 'Failed to create user';
-      toast.error(msg);
+      toast.error(err?.response?.data?.detail ?? 'Failed to create user');
     }
   };
 
@@ -91,7 +89,6 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
   };
 
   return (
-    /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -131,9 +128,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
                 errors.email ? 'border-red-400 bg-red-50' : 'border-slate-300',
               )}
             />
-            {errors.email && (
-              <p className="mt-1 text-xs text-red-500">{errors.email}</p>
-            )}
+            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email}</p>}
           </div>
 
           {/* Full Name */}
@@ -145,10 +140,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
               type="text"
               value={form.full_name}
               onChange={e => field('full_name', e.target.value)}
-              placeholder="Jane Doe (optional)"
+              placeholder="Jane Doe"
               className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-300 bg-white
-                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                         transition-colors"
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
 
@@ -179,9 +173,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
                 ))}
               </select>
             )}
-            {errors.role && (
-              <p className="mt-1 text-xs text-red-500">{errors.role}</p>
-            )}
+            {errors.role && <p className="mt-1 text-xs text-red-500">{errors.role}</p>}
           </div>
 
           {/* Preferred Contact */}
@@ -237,9 +229,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
             >
               {creating ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
-              ) : (
-                'Create User'
-              )}
+              ) : 'Create User'}
             </button>
           </div>
         </form>
@@ -248,13 +238,133 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onClose, onCreated })
   );
 };
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ─── Customer Company Group ───────────────────────────────────────────────────
 
-const ROLES = ['all', 'admin', 'agent', 'team_lead', 'customer'];
+interface CustomerGroupProps {
+  companyName:  string;
+  customers:    AdminUserResponse[];
+  onDeactivate: (id: string, email: string) => void;
+}
+
+const CustomerGroup: React.FC<CustomerGroupProps> = ({ companyName, customers, onDeactivate }) => {
+  const [open, setOpen] = useState(true);
+  const activeCount = customers.filter(u => u.is_active).length;
+
+  return (
+    <div className="border-b border-slate-100 last:border-0">
+
+      {/* Collapsible group header */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-6 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+      >
+        {open
+          ? <ChevronDown  className="w-4 h-4 text-slate-400 shrink-0" />
+          : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+        }
+        <Building2 className="w-4 h-4 text-blue-500 shrink-0" />
+        <span className="text-sm font-semibold text-slate-800">{companyName}</span>
+        <span className="ml-auto text-xs text-slate-400 tabular-nums">
+          {activeCount}/{customers.length} active
+        </span>
+      </button>
+
+      {/* Individual customer rows, indented under the company header */}
+      {open && customers.map(u => (
+        <div
+          key={u.id}
+          className="flex items-center gap-4 px-6 py-3.5 pl-14 border-t border-slate-100 hover:bg-slate-50/40"
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-slate-900 truncate">{u.email}</p>
+            {u.full_name && (
+              <p className="text-xs text-slate-500 truncate">{u.full_name}</p>
+            )}
+          </div>
+          <div className="w-28">
+            <span className={clsx(
+              'inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold capitalize',
+              ROLE_STYLES.customer,
+            )}>
+              customer
+            </span>
+          </div>
+          <div className="w-20">
+            <Badge variant={u.is_active ? 'success' : 'default'}>
+              {u.is_active ? 'Active' : 'Off'}
+            </Badge>
+          </div>
+          <div className="w-24">
+            {u.is_active && (
+              <Button size="sm" variant="danger" onClick={() => onDeactivate(u.id, u.email)}>
+                Deactivate
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── Table column header ──────────────────────────────────────────────────────
+
+const TableHeader: React.FC<{ indent?: boolean }> = ({ indent = false }) => (
+  <div className="flex gap-4 px-6 py-3 border-b border-slate-200 bg-blue-50/50">
+    <div className={clsx('flex-1 text-xs font-semibold text-blue-600 uppercase tracking-widest', indent && 'pl-8')}>
+      Email / Name
+    </div>
+    <div className="w-28 text-xs font-semibold text-blue-600 uppercase tracking-widest">Role</div>
+    <div className="w-20 text-xs font-semibold text-blue-600 uppercase tracking-widest">Status</div>
+    <div className="w-24" />
+  </div>
+);
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export const AdminUsersPage: React.FC = () => {
   const { filtered, users, loading, filter, setFilter, deactivate } = useAdminUsers();
   const [showModal, setShowModal] = useState(false);
+  const [companies, setCompanies] = useState<CompanyResponse[]>([]);
+
+  // Fetch company list once for name resolution
+  useEffect(() => {
+    adminAuthService.listCompanies()
+      .then(setCompanies)
+      .catch(() => toast.error('Failed to load companies'));
+  }, []);
+
+  const resolveCompanyName = (companyId?: string) => {
+    if (!companyId) return 'No Company';
+    return companies.find(c => c.id === companyId)?.name ?? 'Unknown Company';
+  };
+
+  // Derive staff rows and customer groups from filtered list
+  const { staffUsers, customerGroups } = useMemo(() => {
+    const staff     = filtered.filter(u => u.role !== 'customer');
+    const customers = filtered.filter(u => u.role === 'customer');
+
+    // Group by company_id
+    const groupMap: Record<string, AdminUserResponse[]> = {};
+    customers.forEach(u => {
+      const key = u.company_id ?? '__none__';
+      if (!groupMap[key]) groupMap[key] = [];
+      groupMap[key].push(u);
+    });
+
+    // Resolve names and sort alphabetically
+    const groups = Object.entries(groupMap)
+      .map(([companyId, members]) => ({
+        companyId,
+        name:    resolveCompanyName(companyId === '__none__' ? undefined : companyId),
+        members,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return { staffUsers: staff, customerGroups: groups };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, companies]);
 
   const onDeactivate = async (id: string, email: string) => {
     if (!confirm(`Deactivate ${email}?`)) return;
@@ -265,6 +375,10 @@ export const AdminUsersPage: React.FC = () => {
       toast.error('Failed to deactivate user');
     }
   };
+
+  const showStaff     = filter === 'all' || filter !== 'customer';
+  const showCustomers = filter === 'all' || filter === 'customer';
+  const isEmpty       = !loading && staffUsers.length === 0 && customerGroups.length === 0;
 
   return (
     <MainLayout navItems={adminNav} pageTitle="Users">
@@ -291,7 +405,7 @@ export const AdminUsersPage: React.FC = () => {
 
         {/* Role filter tabs */}
         <div className="flex gap-1 bg-slate-100 border border-slate-200 rounded-lg p-1 w-fit">
-          {ROLES.map(r => (
+          {FILTER_ROLES.map(r => (
             <button
               key={r}
               onClick={() => setFilter(r)}
@@ -305,26 +419,16 @@ export const AdminUsersPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Table */}
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="flex gap-4 px-6 py-3 border-b border-slate-200 bg-blue-50/50">
-            <div className="flex-1 text-xs font-semibold text-blue-600 uppercase tracking-widest">Email / Name</div>
-            <div className="w-28 text-xs font-semibold text-blue-600 uppercase tracking-widest">Role</div>
-            <div className="w-20 text-xs font-semibold text-blue-600 uppercase tracking-widest">Status</div>
-            <div className="w-24" />
-          </div>
+        {loading && <PageLoader />}
 
-          {loading ? (
-            <PageLoader />
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-slate-500 text-sm">No users found</p>
-            </div>
-          ) : (
-            filtered.map(u => (
+        {/* ── Staff flat table (admin / agent / team_lead) ── */}
+        {!loading && showStaff && staffUsers.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <TableHeader />
+            {staffUsers.map(u => (
               <div
                 key={u.id}
-                className="flex items-center gap-4 px-6 py-4 border-b border-blue-100 hover:bg-slate-50/30"
+                className="flex items-center gap-4 px-6 py-4 border-b border-blue-100 last:border-0 hover:bg-slate-50/30"
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-900 truncate">{u.email}</p>
@@ -347,26 +451,50 @@ export const AdminUsersPage: React.FC = () => {
                 </div>
                 <div className="w-24">
                   {u.is_active && (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => onDeactivate(u.id, u.email)}
-                    >
+                    <Button size="sm" variant="danger" onClick={() => onDeactivate(u.id, u.email)}>
                       Deactivate
                     </Button>
                   )}
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Customers grouped by company ── */}
+        {!loading && showCustomers && customerGroups.length > 0 && (
+          <div>
+            {filter === 'all' && (
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                Customers by Company
+              </p>
+            )}
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <TableHeader indent />
+              {customerGroups.map(group => (
+                <CustomerGroup
+                  key={group.companyId}
+                  companyName={group.name}
+                  customers={group.members}
+                  onDeactivate={onDeactivate}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {isEmpty && (
+          <div className="bg-white border border-slate-200 rounded-2xl text-center py-16 shadow-sm">
+            <p className="text-slate-500 text-sm">No users found</p>
+          </div>
+        )}
       </div>
 
-      {/* Create User Modal */}
       {showModal && (
         <CreateUserModal
           onClose={() => setShowModal(false)}
-          onCreated={() => {/* list already updated optimistically in hook */}}
+          onCreated={() => {/* list updated optimistically in hook */}}
         />
       )}
     </MainLayout>

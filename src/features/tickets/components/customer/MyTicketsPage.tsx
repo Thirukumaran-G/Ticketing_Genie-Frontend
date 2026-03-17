@@ -11,7 +11,7 @@ import { CustomerTicketListItem } from '../../types';
 
 const FILTER_TABS = [
   { key: 'all',         label: 'All' },
-  { key: 'open',        label: 'Open' },
+  { key: 'assigned',        label: 'Assigned' },
   { key: 'in_progress', label: 'In Progress' },
   { key: 'resolved',    label: 'Resolved' },
   { key: 'closed',      label: 'Closed' },

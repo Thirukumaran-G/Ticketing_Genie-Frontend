@@ -280,8 +280,6 @@ export const TLOverviewPage: React.FC = () => {
                 { label: 'Agents',     value: agents.length,               color: 'text-slate-900' },
                 { label: 'Unassigned', value: teamOverview.unassigned_count, color: teamOverview.unassigned_count > 0 ? 'text-orange-400' : 'text-slate-900' },
                 { label: 'Total Open', value: totalOpen,                    color: 'text-slate-900' },
-                { label: 'Avg Load',   value: agents.length > 0 ? Math.round(totalOpen / agents.length) : 0, color: 'text-slate-900' },
-                { label: 'Overloaded', value: overloaded,                   color: overloaded > 0 ? 'text-red-400' : 'text-green-400' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-white border border-slate-200 rounded-xl p-5">
                   <p className="text-xs text-blue-600 uppercase tracking-widest font-semibold mb-1">{label}</p>

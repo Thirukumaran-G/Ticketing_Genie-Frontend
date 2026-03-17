@@ -13,21 +13,22 @@ import {
 } from '../../../types';
 
 export const ticketsService = {
+
   // ── Customer routes ───────────────────────────────────────────────────────
 
   createTicket: (payload: {
-    title: string;
-    description: string;
-    product_id: string;
+    title:             string;
+    description:       string;
+    product_id:        string;
     customer_severity: string;
-    environment?: string;
-    source?: string;
-    files?: File[];
+    environment?:      string;
+    source?:           string;
+    files?:            File[];
   }) => {
     const form = new FormData();
-    form.append('title', payload.title);
-    form.append('description', payload.description);
-    form.append('product_id', payload.product_id);
+    form.append('title',             payload.title);
+    form.append('description',       payload.description);
+    form.append('product_id',        payload.product_id);
     form.append('customer_severity', payload.customer_severity);
     if (payload.environment) form.append('environment', payload.environment);
     form.append('source', payload.source ?? 'web');
@@ -53,7 +54,9 @@ export const ticketsService = {
 
   getTicketAgentInfo: (ticketId: string) =>
     ticketClient
-      .get<{ assigned: boolean; agent_name: string | null }>(`/customer/tickets/${ticketId}/agent`)
+      .get<{ assigned: boolean; agent_name: string | null }>(
+        `/customer/tickets/${ticketId}/agent`,
+      )
       .then((r) => r.data),
 
   getThread: (ticketId: string) =>
@@ -64,6 +67,16 @@ export const ticketsService = {
   replyToTicket: (ticketId: string, message: string) =>
     ticketClient
       .post<ConversationItem>(`/customer/tickets/${ticketId}/reply`, { message })
+      .then((r) => r.data),
+
+  /**
+   * closeTicket — PATCH /customer/tickets/{ticketId}/close
+   * Only succeeds when ticket status is 'resolved'.
+   * Backend stamps closed_at + closed_by and returns 204.
+   */
+  closeTicket: (ticketId: string) =>
+    ticketClient
+      .patch(`/customer/tickets/${ticketId}/close`)
       .then((r) => r.data),
 
   uploadAttachment: (ticketId: string, file: File) => {
@@ -84,26 +97,39 @@ export const ticketsService = {
 
   // ── Agent routes ──────────────────────────────────────────────────────────
 
+  /** Initial queue load — tickets assigned to me */
   getAgentQueue: () =>
     ticketClient
       .get<TicketQueueItem[]>('/agent/queue')
       .then((r) => r.data),
 
+  /** All tickets assigned to me (same data, different view) */
   getAgentTickets: () =>
     ticketClient
-      .get<TLTicketDetail[]>('/agent/tickets')
+      .get<TicketQueueItem[]>('/agent/tickets')
       .then((r) => r.data),
 
+  /** Single ticket detail */
   getAgentTicket: (ticketId: string) =>
     ticketClient
       .get<TLTicketDetail>(`/agent/tickets/${ticketId}`)
       .then((r) => r.data),
 
+  /** Full conversation thread */
   getAgentThread: (ticketId: string) =>
     ticketClient
       .get<TicketThreadResponse>(`/agent/tickets/${ticketId}/thread`)
       .then((r) => r.data),
 
+  /** Customer info attached to a ticket */
+  getTicketCustomerInfo: (ticketId: string) =>
+    ticketClient
+      .get<{ full_name: string; email: string }>(
+        `/agent/tickets/${ticketId}/customer`,
+      )
+      .then((r) => r.data),
+
+  /** Post a reply or internal note */
   postAgentComment: (ticketId: string, content: string, isInternal = false) =>
     ticketClient
       .post<ConversationItem>(`/agent/tickets/${ticketId}/comment`, {
@@ -112,6 +138,7 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
+  /** Upload attachment on agent side */
   uploadAgentAttachment: (ticketId: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -125,14 +152,10 @@ export const ticketsService = {
   getAgentAttachmentUrl: (ticketId: string, attachmentId: string) =>
     `${ENV.TICKET_BASE}/agent/tickets/${ticketId}/attachments/${attachmentId}`,
 
-  postComment: (ticketId: string, content: string) =>
-    ticketClient
-      .post<ConversationItem>(`/agent/tickets/${ticketId}/comment`, {
-        content,
-        is_internal: false,
-      })
-      .then((r) => r.data),
-
+  /**
+   * updateAgentStatus — agent can only set:
+   *   in_progress | on_hold | resolved
+   */
   updateAgentStatus: (ticketId: string, status: string, reason?: string) =>
     ticketClient
       .patch<TLTicketDetail>(`/agent/tickets/${ticketId}/status`, {
@@ -141,38 +164,73 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
+  /**
+   * setInProgress — called when agent focuses the reply composer.
+   * Hits dedicated PATCH /agent/tickets/{id}/in-progress endpoint
+   * so the transition assigned → in_progress is idempotent and silent.
+   */
   setInProgress: (ticketId: string) =>
     ticketClient
-      .patch<TLTicketDetail>(`/agent/tickets/${ticketId}/status`, { status: 'in_progress' })
+      .patch(`/agent/tickets/${ticketId}/in-progress`)
       .then((r) => r.data),
 
+  /** Agent self-unassign with justification */
   unassignTicket: (ticketId: string, justification: string) =>
     ticketClient
       .patch(`/agent/tickets/${ticketId}/unassign`, { justification })
       .then((r) => r.data),
 
+  /** Submit SLA breach justification */
+  submitBreachJustification: (
+    ticketId:      string,
+    breachType:    'response' | 'resolution',
+    justification: string,
+  ) =>
+    ticketClient
+      .post(`/agent/tickets/${ticketId}/breach-justification`, {
+        breach_type:   breachType,
+        justification,
+      })
+      .then((r) => r.data),
+
+  /** List breach justifications for a ticket (agent view) */
+  getBreachJustifications: (ticketId: string) =>
+    ticketClient
+      .get(`/agent/tickets/${ticketId}/breach-justifications`)
+      .then((r) => r.data),
+
   // ── Team Lead routes ──────────────────────────────────────────────────────
 
+  /** Unassigned queue across all TL's teams */
   getTLQueue: () =>
     ticketClient
       .get<TicketQueueItem[]>('/teamlead/queue')
       .then((r) => r.data),
 
+  /** All team tickets, optionally filtered by status */
   getTLTickets: (status?: string) =>
     ticketClient
-      .get<TLTicketDetail[]>('/teamlead/tickets', { params: status ? { status } : {} })
+      .get<TLTicketDetail[]>('/teamlead/tickets', {
+        params: status ? { status } : {},
+      })
       .then((r) => r.data),
 
+  /** Single ticket detail (TL view) */
   getTLTicket: (ticketId: string) =>
     ticketClient
       .get<TLTicketDetail>(`/teamlead/tickets/${ticketId}`)
       .then((r) => r.data),
 
+  /** Manually assign a ticket to an agent */
   manualAssign: (ticketId: string, agent_user_id: string) =>
     ticketClient
       .post<TLTicketDetail>(`/teamlead/tickets/${ticketId}/assign`, { agent_user_id })
       .then((r) => r.data),
 
+  /**
+   * updateTLStatus — TL can set:
+   *   in_progress | on_hold | resolved | closed
+   */
   updateTLStatus: (ticketId: string, status: string, reason?: string) =>
     ticketClient
       .patch<TLTicketDetail>(`/teamlead/tickets/${ticketId}/status`, {
@@ -181,39 +239,57 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
+  /** Team workload overview */
   getTeamOverview: () =>
     ticketClient
       .get<TeamOverviewResponse>('/teamlead/overview')
       .then((r) => r.data),
 
-  getTicketCustomerInfo: (ticketId: string) =>
-    ticketClient
-      .get<{ full_name: string; email: string }>(`/agent/tickets/${ticketId}/customer`)
-      .then((r) => r.data),
-
+  /** Full thread for a ticket (TL view) */
   getTLTicketThread: (ticketId: string) =>
     ticketClient
       .get<TicketThreadResponse>(`/teamlead/tickets/${ticketId}/thread`)
       .then((r) => r.data),
 
+  /** Add internal note (TL) */
   postTLInternalNote: (ticketId: string, content: string) =>
     ticketClient
       .post(`/teamlead/tickets/${ticketId}/note`, { content })
       .then((r) => r.data),
 
+  /** Customer info (TL can look up via ticket) */
+  getTLTicketCustomerInfo: (ticketId: string) =>
+    ticketClient
+      .get<{ full_name: string; email: string }>(
+        `/teamlead/tickets/${ticketId}/customer`,
+      )
+      .then((r) => r.data),
+
+  /** Breach justifications (TL view) */
+  getTLBreachJustifications: (ticketId: string) =>
+    ticketClient
+      .get(`/teamlead/tickets/${ticketId}/breach-justifications`)
+      .then((r) => r.data),
+
   // ── Notification Templates ────────────────────────────────────────────────
 
   listNotificationTemplates: () =>
-    ticketClient.get('/teamlead/notification-templates').then((r) => r.data),
+    ticketClient
+      .get('/teamlead/notification-templates')
+      .then((r) => r.data),
 
   getNotificationTemplate: (templateId: string) =>
-    ticketClient.get(`/teamlead/notification-templates/${templateId}`).then((r) => r.data),
+    ticketClient
+      .get(`/teamlead/notification-templates/${templateId}`)
+      .then((r) => r.data),
 
   updateNotificationTemplate: (
     templateId: string,
     payload: { name?: string; subject?: string; body?: string; is_active?: boolean },
   ) =>
-    ticketClient.put(`/teamlead/notification-templates/${templateId}`, payload).then((r) => r.data),
+    ticketClient
+      .put(`/teamlead/notification-templates/${templateId}`, payload)
+      .then((r) => r.data),
 
   // ── Send Apology ──────────────────────────────────────────────────────────
 
@@ -231,42 +307,6 @@ export const ticketsService = {
       })
       .then((r) => r.data),
 
-  // ── SSE stream URLs ───────────────────────────────────────────────────────
-
-  getAgentQueueStreamUrl: (token: string) =>
-    `${ENV.TICKET_BASE}/agent/queue/stream?token=${token}`,
-
-  getTLQueueStreamUrl: (token: string) =>
-    `${ENV.TICKET_BASE}/teamlead/queue/stream?token=${token}`,
-
-  getNotificationStreamUrl: (token: string) =>
-    `${ENV.TICKET_BASE}/notifications/stream?token=${token}`,
-
-  // ── Products list ─────────────────────────────────────────────────────────
-
-  getProducts: () =>
-    authClient
-      .get<{ id: string; name: string; is_active: boolean }[]>('admin/products')
-      .then((r) => r.data),
-
-  submitBreachJustification: (
-    ticketId:      string,
-    breachType:    'response' | 'resolution',
-    justification: string,
-  ) =>
-    ticketClient
-      .post(`/agent/tickets/${ticketId}/breach-justification`, {
-        breach_type:   breachType,
-        justification,
-      })
-      .then((r) => r.data),
-
-  getBreachJustifications: (ticketId: string) =>
-    ticketClient.get(`/agent/tickets/${ticketId}/breach-justifications`).then((r) => r.data),
-
-  getTLBreachJustifications: (ticketId: string) =>
-    ticketClient.get(`/teamlead/tickets/${ticketId}/breach-justifications`).then((r) => r.data),
-
   // ── Similar Ticket Groups ─────────────────────────────────────────────────
 
   listTicketGroups: (confirmedOnly = false) =>
@@ -275,10 +315,14 @@ export const ticketsService = {
       .then((r) => r.data),
 
   getTicketGroup: (groupId: string) =>
-    ticketClient.get(`/teamlead/ticket-groups/${groupId}`).then((r) => r.data),
+    ticketClient
+      .get(`/teamlead/ticket-groups/${groupId}`)
+      .then((r) => r.data),
 
   confirmTicketGroup: (groupId: string, name?: string) =>
-    ticketClient.post(`/teamlead/ticket-groups/${groupId}/confirm`, { name }).then((r) => r.data),
+    ticketClient
+      .post(`/teamlead/ticket-groups/${groupId}/confirm`, { name })
+      .then((r) => r.data),
 
   addTicketToGroup: (groupId: string, ticketId: string, similarityScore = 0) =>
     ticketClient
@@ -289,7 +333,9 @@ export const ticketsService = {
       .then((r) => r.data),
 
   removeTicketFromGroup: (groupId: string, ticketId: string) =>
-    ticketClient.delete(`/teamlead/ticket-groups/${groupId}/members/${ticketId}`).then((r) => r.data),
+    ticketClient
+      .delete(`/teamlead/ticket-groups/${groupId}/members/${ticketId}`)
+      .then((r) => r.data),
 
   bulkAssignGroup: (groupId: string, agentUserId: string, internalMessage: string) =>
     ticketClient
@@ -307,17 +353,41 @@ export const ticketsService = {
       .then((r) => r.data),
 
   getGroupsForTicket: (ticketId: string) =>
-    ticketClient.get(`/teamlead/tickets/${ticketId}/similar-groups`).then((r) => r.data),
+    ticketClient
+      .get(`/teamlead/tickets/${ticketId}/similar-groups`)
+      .then((r) => r.data),
+
+  // ── Notifications ─────────────────────────────────────────────────────────
 
   getUnreadNotificationCount: () =>
     ticketClient
       .get<{ count: number }>('/notifications/unread-count')
       .then((r) => r.data.count),
 
+  // ── Products list ─────────────────────────────────────────────────────────
+
+  getProducts: () =>
+    authClient
+      .get<{ id: string; name: string; is_active: boolean }[]>('admin/products')
+      .then((r) => r.data),
+
+  // ── SSE stream URLs ───────────────────────────────────────────────────────
+  // Token is NOT passed in the URL — the EventSource connection goes through
+  // the axios interceptor which attaches the Bearer header automatically.
+  // If your SSE endpoint requires the token in the URL (e.g. native EventSource
+  // which can't set headers), pass it explicitly at the call site instead.
+
+  getAgentQueueStreamUrl: () =>
+    `${ENV.TICKET_BASE}/agent/queue/stream`,
+
+  getTLQueueStreamUrl: () =>
+    `${ENV.TICKET_BASE}/teamlead/queue/stream`,
+
+  getNotificationStreamUrl: () =>
+    `${ENV.TICKET_BASE}/notifications/stream`,
+
   // ── User name resolution ──────────────────────────────────────────────────
-  // Calls GET /internal/users/{user_id} for each unique author_id in a thread.
-  // Returns a map of { user_id → full_name }.
-  // Failures are silently ignored — the UI falls back to role-based labels.
+
   resolveUserNames: async (userIds: string[]): Promise<Record<string, string>> => {
     const unique = [...new Set(userIds.filter(Boolean))];
     if (!unique.length) return {};
@@ -325,8 +395,8 @@ export const ticketsService = {
       unique.map((id) =>
         authClient
           .get<{ id: string; full_name: string }>(`/internal/users/${id}`)
-          .then((r) => ({ id, name: r.data.full_name }))
-      )
+          .then((r) => ({ id, name: r.data.full_name })),
+      ),
     );
     const map: Record<string, string> = {};
     results.forEach((r) => {
