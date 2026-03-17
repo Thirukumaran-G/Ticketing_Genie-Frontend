@@ -5,41 +5,44 @@ import { Toaster } from 'react-hot-toast';
 import { store } from './app/store';
 import { AppRouter } from './app/routes';
 import { forceLogout, updateTokens, setUser } from './features/auth/slices/authSlice';
-import { injectLogout, injectGetAccessToken, clearTokens } from './lib/axios';
+import {
+  injectLogout,
+  injectGetAccessToken,
+  injectUpdateAccessToken,
+  clearTokens,
+} from './lib/axios';
 import { authService } from './features/auth/services/authService';
 import { Spinner } from './components/ui';
 
-// Wire logout → Redux + clear storage
 injectLogout(() => {
   clearTokens();
   store.dispatch(forceLogout());
 });
 
-// Give axios request interceptor access to Redux access token
-// without a circular import (axios → store → axios)
 injectGetAccessToken(() => store.getState().auth.accessToken);
 
+injectUpdateAccessToken((token: string) => {
+  const currentRefresh = store.getState().auth.refreshToken ?? '';
+  store.dispatch(updateTokens({ access: token, refresh: currentRefresh }));
+});
+
 // ── Session restore on page load ──────────────────────────────────────────────
-// Redux memory is wiped on reload but the httpOnly refresh_token cookie survives.
-// We call /refresh → get new access token in response body → restore session.
+
 const Bootstrap: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [ready, setReady] = useState(false);
 
+  // ── Initial session restore ───────────────────────────────────────────────
   useEffect(() => {
     const restore = async () => {
       try {
-        // No body needed — browser sends refresh_token cookie automatically
         const tokens = await authService.refresh();
         store.dispatch(updateTokens({
           access:  tokens.access_token,
           refresh: tokens.refresh_token,
         }));
-        // Pass token explicitly — _getAccessToken() in the interceptor may not
-        // have the new token yet since Redux dispatch is async in this context
         const user = await authService.me(tokens.access_token);
         store.dispatch(setUser(user));
       } catch {
-        // Refresh token missing or expired — user must log in, not an error
         store.dispatch(forceLogout());
       } finally {
         setReady(true);
@@ -47,6 +50,30 @@ const Bootstrap: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     };
     restore();
   }, []);
+
+  // ── Proactive token refresh every 25 min ─────────────────────────────────
+  // Keeps SSE connections alive — they can't trigger axios 401 refresh.
+  // Token expires in 30 min; refresh 5 min early so SSE never sees a 401.
+  useEffect(() => {
+    if (!ready) return;
+
+    const REFRESH_MS = 25 * 60 * 1000;
+
+    const tick = async () => {
+      try {
+        const tokens = await authService.refresh();
+        store.dispatch(updateTokens({
+          access:  tokens.access_token,
+          refresh: tokens.refresh_token,
+        }));
+      } catch {
+        store.dispatch(forceLogout());
+      }
+    };
+
+    const id = setInterval(tick, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [ready]);
 
   if (!ready) {
     return (
@@ -67,11 +94,11 @@ const App: React.FC = () => (
         position="top-right"
         toastOptions={{
           style: {
-            background: '#18181b',
-            color:      '#fff',
-            border:     '1px solid #27272a',
+            background:   '#18181b',
+            color:        '#fff',
+            border:       '1px solid #27272a',
             borderRadius: '10px',
-            fontSize:   '16px',
+            fontSize:     '16px',
           },
           success: { iconTheme: { primary: '#22c55e', secondary: '#18181b' } },
           error:   { iconTheme: { primary: '#ef4444', secondary: '#18181b' } },

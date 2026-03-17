@@ -14,20 +14,20 @@ import {
 
 // ── Single SLA bar row ────────────────────────────────────────────────────────
 
-const SLARow: React.FC<{ timer: SLATimer; showDue?: boolean }> = ({
-  timer,
-  showDue = true,
-}) => {
-  const barColor  = slaBarColor(timer.status);
-  const textColor = slaTextColor(timer.status);
+const SLARow: React.FC<{ timer: SLATimer; showDue?: boolean }> = ({ timer, showDue = true }) => {
+  const effectiveStatus: SLAStatus = timer.isMet && timer.wasBreached ? 'breached' : timer.status;
+  const effectiveBarColor  = slaBarColor(effectiveStatus);
+  const effectiveTextColor = slaTextColor(effectiveStatus);
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-[#44546f] uppercase tracking-widest">
             {timer.label}
           </span>
+
+          {/* Paused */}
           {timer.isPaused && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
               <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
@@ -36,7 +36,9 @@ const SLARow: React.FC<{ timer: SLATimer; showDue?: boolean }> = ({
               Paused
             </span>
           )}
-          {timer.status === 'met' && (
+
+          {/* Met cleanly — green */}
+          {timer.isMet && !timer.wasBreached && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-600 border border-green-200">
               <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -44,7 +46,19 @@ const SLARow: React.FC<{ timer: SLATimer; showDue?: boolean }> = ({
               Met
             </span>
           )}
-          {timer.status === 'breached' && (
+
+          {/* Met but was breached — red */}
+          {timer.isMet && timer.wasBreached && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">
+              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              Breached (resolved late)
+            </span>
+          )}
+
+          {/* Actively breached */}
+          {!timer.isMet && timer.status === 'breached' && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">
               <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -52,7 +66,9 @@ const SLARow: React.FC<{ timer: SLATimer; showDue?: boolean }> = ({
               Breached
             </span>
           )}
-          {timer.status === 'warning' && (
+
+          {/* Warning */}
+          {!timer.isMet && timer.status === 'warning' && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-50 text-orange-600 border border-orange-200">
               <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -61,25 +77,33 @@ const SLARow: React.FC<{ timer: SLATimer; showDue?: boolean }> = ({
             </span>
           )}
         </div>
-        <span className={clsx('text-xs font-medium', textColor)}>
+
+        <span className={clsx('text-xs font-medium whitespace-nowrap', effectiveTextColor)}>
           {timer.timeDisplay}
         </span>
       </div>
 
       {/* Progress bar */}
-      {!timer.isMet && !timer.isPaused && (
+      {!timer.isPaused && (
         <div className="w-full h-1.5 rounded-full bg-[#ebecf0] overflow-hidden">
           <div
-            className={clsx('h-full rounded-full transition-all duration-500', barColor)}
-            style={{ width: `${Math.max(timer.pct, 2)}%` }}
+            className={clsx('h-full rounded-full transition-all duration-500', effectiveBarColor)}
+            style={{ width: `${Math.max(timer.isMet ? 100 : timer.pct, 2)}%` }}
           />
         </div>
       )}
 
-      {/* Due date */}
+      {/* Due date — only when not yet met */}
       {showDue && timer.dueAt && !timer.isMet && (
         <p className="text-[11px] text-[#8993a4]">
           Due {format(new Date(timer.dueAt), 'MMM d, h:mm a')}
+        </p>
+      )}
+
+      {/* Breach timestamp */}
+      {timer.breachedAt && (
+        <p className="text-[11px] text-red-500">
+          Breached at {format(new Date(timer.breachedAt), 'MMM d, h:mm a')}
         </p>
       )}
     </div>
@@ -219,7 +243,11 @@ export const AgentSLAPanel: React.FC<{
     isCustomer:                false,
   });
 
-  const anyBreached = response.status === 'breached' || resolution.status === 'breached';
+  const anyBreached =
+    response.status === 'breached' ||
+    resolution.status === 'breached' ||
+    response.wasBreached ||
+    resolution.wasBreached;
 
   return (
     <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4 space-y-4">
@@ -249,9 +277,9 @@ export const AgentSLAPanel: React.FC<{
           <div>
             <p className="text-xs font-semibold text-red-700">SLA breached</p>
             <p className="text-xs text-red-600 mt-0.5">
-              {response.status === 'breached' && resolution.status !== 'breached'
+              {(response.status === 'breached' || response.wasBreached) && (resolution.status !== 'breached' && !resolution.wasBreached)
                 ? 'Response SLA exceeded. Submit a justification below.'
-                : resolution.status === 'breached' && response.status !== 'breached'
+                : (resolution.status === 'breached' || resolution.wasBreached) && (response.status !== 'breached' && !response.wasBreached)
                 ? 'Resolution SLA exceeded. Submit a justification below.'
                 : 'Both response and resolution SLAs exceeded.'}
             </p>

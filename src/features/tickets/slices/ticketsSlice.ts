@@ -1,4 +1,3 @@
-// src/features/tickets/slices/ticketsSlice.ts
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import {
   CustomerTicketListItem,

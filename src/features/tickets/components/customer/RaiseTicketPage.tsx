@@ -16,6 +16,8 @@ import { ENVIRONMENTS, SEVERITIES } from '../../../../config';
 
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const DRAFT_KEY = 'ticket_draft_v1';
+const AUTOSAVE_DEBOUNCE_MS = 600;
 
 const ALLOWED_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
@@ -42,6 +44,39 @@ interface PendingFile {
   id: string;
   file: File;
   preview?: string;
+}
+
+// ── Draft helpers ─────────────────────────────────────────────────────────────
+
+interface DraftData {
+  form: Partial<Form>;
+  savedAt: string;
+}
+
+function saveDraft(data: Partial<Form>) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ form: data, savedAt: new Date().toISOString() }));
+  } catch { /* storage full — ignore */ }
+}
+
+function loadDraft(): DraftData | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as DraftData) : null;
+  } catch { return null; }
+}
+
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY);
+}
+
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return '';
+  if (mins < 60) return ``;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return ``;
+  return ``;
 }
 
 // ── Severity config ───────────────────────────────────────────────────────────
@@ -107,14 +142,25 @@ export const RaiseTicketPage: React.FC = () => {
 
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { dispatch(fetchProducts()); }, [dispatch]);
+
+  // Check for existing draft on mount
+  useEffect(() => {
+    const draft = loadDraft();
+    if (draft && Object.keys(draft.form).length > 0) setDraftBanner(draft);
+  }, []);
 
   useEffect(() => {
     return () => {
       pendingFiles.forEach((pf) => { if (pf.preview) URL.revokeObjectURL(pf.preview); });
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
   }, []); // eslint-disable-line
 
@@ -123,6 +169,46 @@ export const RaiseTicketPage: React.FC = () => {
   });
 
   const severity = watch('customer_severity');
+  const allValues = watch();
+
+  // ── Auto-save to localStorage ─────────────────────────────────────────────
+
+  useEffect(() => {
+    if (draftBanner) return;
+
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+
+    autosaveTimer.current = setTimeout(() => {
+      const isEmpty = !allValues.title && !allValues.description && !allValues.product_id;
+      if (isEmpty) return;
+
+      saveDraft(allValues);
+      setLastSavedAt(new Date().toISOString());
+    }, AUTOSAVE_DEBOUNCE_MS);
+
+    return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
+  }, [allValues, draftBanner]);
+
+  // ── Draft restore / discard ───────────────────────────────────────────────
+
+  const handleRestoreDraft = () => {
+    if (!draftBanner) return;
+    const f = draftBanner.form;
+    if (f.title)             setValue('title', f.title);
+    if (f.description)       setValue('description', f.description);
+    if (f.product_id)        setValue('product_id', f.product_id);
+    if (f.customer_severity) setValue('customer_severity', f.customer_severity);
+    if (f.environment)       setValue('environment', f.environment);
+    setLastSavedAt(draftBanner.savedAt);
+    setDraftBanner(null);
+    toast.success('Draft restored!');
+  };
+
+  const handleDiscardDraft = () => {
+    clearDraft();
+    setDraftBanner(null);
+    toast('Draft discarded', { icon: '🗑️' });
+  };
 
   // ── File handling ─────────────────────────────────────────────────────────
 
@@ -165,6 +251,7 @@ export const RaiseTicketPage: React.FC = () => {
       files: pendingFiles.map((pf) => pf.file),
     }));
     if (createTicketThunk.fulfilled.match(result)) {
+      clearDraft();
       toast.success(`Ticket ${result.payload.ticket_number} created`);
       navigate('/tickets/mine');
     } else {
@@ -187,15 +274,55 @@ export const RaiseTicketPage: React.FC = () => {
     <MainLayout navItems={customerNav} pageTitle="Create issue">
       <div className="min-h-screen bg-[#F4F5F7]">
 
+        {/* ── Draft Recovery Banner ── */}
+        {draftBanner && (
+          <div className="mx-1 mt-1 mb-0 rounded border border-[#FFC400] bg-[#FFFAE6] px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <svg className="w-4 h-4 text-[#FF991F] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <p className="text-sm text-[#172B4D]">
+                <span className="font-semibold">Unsaved draft found</span>
+                <span className="text-[#6B778C] ml-1">· saved {timeAgo(draftBanner.savedAt)}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="h-7 px-3 rounded text-xs font-medium text-[#42526E] bg-white border border-[#DFE1E6] hover:bg-[#EBECF0] transition-colors"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleRestoreDraft}
+                className="h-7 px-3 rounded text-xs font-medium text-white bg-[#FF991F] hover:bg-[#FF8B00] transition-colors"
+              >
+                Restore draft
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Main */}
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="p-1">
             <div className="bg-white rounded border border-[#DFE1E6]">
 
-              {/* Card title */}
-              <div className="px-6 py-4 border-b border-[#DFE1E6]">
-                <h1 className="text-base font-semibold text-[#172B4D]">Create issue</h1>
-              </div>
+              {/* Card title + draft saved indicator */}
+                  <div className="px-6 flex items-center">
+
+                    {!draftBanner && lastSavedAt && (
+                      <div className="ml-auto flex items-center gap-1.5 text-xs text-[#6B778C]">
+                        <svg className="w-3 h-3 text-[#36B37E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Draft saved {timeAgo(lastSavedAt)}</span>
+                      </div>
+                    )}
+                  </div>
 
               <div className="px-6 py-5 flex flex-col gap-5">
 
@@ -385,27 +512,39 @@ export const RaiseTicketPage: React.FC = () => {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-3.5 border-t border-[#DFE1E6] bg-[#F4F5F7] flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/tickets/mine')}
-                  className="h-8 px-4 rounded text-sm font-medium text-[#42526E] bg-white border border-[#DFE1E6] hover:bg-[#EBECF0] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="h-8 px-5 rounded text-sm font-medium text-white bg-[#0052CC] hover:bg-[#0065FF] disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                >
-                  {isSubmitting && (
-                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                  )}
-                  {isSubmitting ? 'Creating…' : 'Create'}
-                </button>
+              <div className="px-6 py-3.5 border-t border-[#DFE1E6] bg-[#F4F5F7] flex items-center justify-between gap-2">
+                {lastSavedAt ? (
+                  <button
+                    type="button"
+                    onClick={() => { clearDraft(); setLastSavedAt(null); toast('Draft cleared', { icon: '🗑️' }); }}
+                    className="text-xs text-[#6B778C] hover:text-[#DE350B] transition-colors"
+                  >
+                    Clear draft
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/tickets/mine')}
+                    className="h-8 px-4 rounded text-sm font-medium text-[#42526E] bg-white border border-[#DFE1E6] hover:bg-[#EBECF0] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="h-8 px-5 rounded text-sm font-medium text-white bg-[#0052CC] hover:bg-[#0065FF] disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                  >
+                    {isSubmitting && (
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    )}
+                    {isSubmitting ? 'Creating…' : 'Create'}
+                  </button>
+                </div>
               </div>
 
             </div>

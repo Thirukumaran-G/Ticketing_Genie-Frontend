@@ -1,5 +1,5 @@
 // src/features/notifications/components/NotificationsPage.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import { MainLayout } from '../../../layouts/MainLayout';
@@ -57,6 +57,9 @@ const typeColor = (type: string | null) => {
     case 'sla_warning':              return 'bg-orange-400';
     case 'sla_breach_justification': return 'bg-purple-500';
     case 'internal_note':            return 'bg-amber-500';
+    case 'agent_reply':              return 'bg-blue-400';
+    case 'customer_reply':           return 'bg-cyan-500';
+    case 'ticket_reopened':          return 'bg-orange-500';
     case 'similar_tickets_detected': return 'bg-indigo-500';
     case 'bulk_assigned':            return 'bg-teal-500';
     case 'apology_message':          return 'bg-pink-500';
@@ -72,6 +75,9 @@ const typeBorder = (type: string | null) => {
     case 'sla_warning':              return 'border-orange-400/30';
     case 'sla_breach_justification': return 'border-purple-500/30';
     case 'internal_note':            return 'border-amber-500/30';
+    case 'agent_reply':              return 'border-blue-400/30';
+    case 'customer_reply':           return 'border-cyan-500/30';
+    case 'ticket_reopened':          return 'border-orange-500/30';
     case 'similar_tickets_detected': return 'border-indigo-500/30';
     case 'bulk_assigned':            return 'border-teal-500/30';
     case 'apology_message':          return 'border-pink-500/30';
@@ -90,6 +96,9 @@ const typeLabel = (type: string | null) => {
     case 'sla_warning':              return 'SLA Warning';
     case 'sla_breach_justification': return 'Breach Justification';
     case 'internal_note':            return 'Internal Note';
+    case 'agent_reply':              return 'Agent Reply';
+    case 'customer_reply':           return 'Customer Reply';
+    case 'ticket_reopened':          return 'Reopened';
     case 'similar_tickets_detected': return 'Similar Tickets';
     case 'bulk_assigned':            return 'Bulk Assigned';
     case 'apology_message':          return 'Apology Sent';
@@ -113,7 +122,7 @@ const NotifModal: React.FC<{ notif: Notif; onClose: () => void }> = ({ notif, on
     >
       <div className={clsx(
         'w-full max-w-md bg-white border rounded-2xl shadow-2xl overflow-hidden',
-        typeBorder(notif.type)
+        typeBorder(notif.type),
       )}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div className="flex items-center gap-2.5">
@@ -122,23 +131,16 @@ const NotifModal: React.FC<{ notif: Notif; onClose: () => void }> = ({ notif, on
               {typeLabel(notif.type)}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-blue-700 transition-colors"
-          >
+          <button onClick={onClose} className="text-slate-400 hover:text-blue-700 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         <div className="px-6 py-5 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-900 leading-snug">
-            {notif.title ?? '—'}
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900 leading-snug">{notif.title ?? '—'}</h3>
           {notif.message && (
-            <p className="text-sm text-slate-500 whitespace-pre-line leading-relaxed">
-              {notif.message}
-            </p>
+            <p className="text-sm text-slate-500 whitespace-pre-line leading-relaxed">{notif.message}</p>
           )}
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
@@ -174,6 +176,10 @@ export const NotificationsPage: React.FC = () => {
   const [prefLoading, setPrefLoading] = useState(true);
   const [toggling, setToggling]       = useState(false);
   const [selected, setSelected]       = useState<Notif | null>(null);
+
+  // ── Keep tokenRef current so SSE reconnect always uses the latest token ──
+  const tokenRef = useRef<string | null>(token);
+  useEffect(() => { tokenRef.current = token; }, [token]);
 
   const fetchNotifs = useCallback(async () => {
     try {
@@ -219,70 +225,83 @@ export const NotificationsPage: React.FC = () => {
     setSelected(n);
   }, [markRead]);
 
+  // ── SSE — reconnects with fresh token on expiry ────────────────────────────
   useEffect(() => {
     fetchNotifs();
     fetchPref();
 
     if (!token) return;
 
-    const url = `/api/v1/notifications/stream?token=${encodeURIComponent(token)}`;
     let es: EventSource;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = () => {
-      es = new EventSource(url);
+    const connect = (currentToken: string) => {
+      if (es) es.close();
+      es = new EventSource(
+        `/api/v1/notifications/stream?token=${encodeURIComponent(currentToken)}`,
+      );
 
-      es.onopen  = () => {};
-      es.onerror = () => { es.close(); setTimeout(connect, 5_000); };
+      es.onopen = () => {};
+
+      // On error: reconnect using tokenRef.current (latest Redux token)
+      // NOT currentToken from the closure (which may be expired)
+      es.onerror = () => {
+        es.close();
+        reconnectTimer = setTimeout(() => {
+          const freshToken = tokenRef.current;
+          if (freshToken) connect(freshToken);
+        }, 5_000);
+      };
 
       es.addEventListener('notification', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          setNotifs((prev) => [
-            {
-              id:          data.id          ?? String(Date.now()),
-              type:        data.type        ?? null,
-              title:       data.title       ?? null,
-              message:     data.message     ?? null,
-              is_read:     false,
-              is_internal: data.is_internal ?? false,
-              created_at:  new Date().toISOString(),
-              ticket_id:   data.ticket_id   ?? null,
-            },
-            ...prev,
-          ]);
+          setNotifs((prev) => [{
+            id:          data.id          ?? String(Date.now()),
+            type:        data.type        ?? null,
+            title:       data.title       ?? null,
+            message:     data.message     ?? null,
+            is_read:     false,
+            is_internal: data.is_internal ?? false,
+            created_at:  new Date().toISOString(),
+            ticket_id:   data.ticket_id   ?? null,
+          }, ...prev]);
         } catch { /* bad payload */ }
       });
 
       es.addEventListener('read_receipt', (e: MessageEvent) => {
         try {
           const { id } = JSON.parse(e.data);
-          setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+          setNotifs((prev) =>
+            prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
+          );
         } catch { /* bad payload */ }
       });
 
       es.addEventListener('internal_note', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          setNotifs((prev) => [
-            {
-              id:          data.id          ?? String(Date.now()),
-              type:        'internal_note',
-              title:       data.title       ?? 'Internal note',
-              message:     data.message     ?? null,
-              is_read:     false,
-              is_internal: true,
-              created_at:  new Date().toISOString(),
-              ticket_id:   data.ticket_id   ?? null,
-            },
-            ...prev,
-          ]);
+          setNotifs((prev) => [{
+            id:          data.id        ?? String(Date.now()),
+            type:        'internal_note',
+            title:       data.title     ?? 'Internal note',
+            message:     data.message   ?? null,
+            is_read:     false,
+            is_internal: true,
+            created_at:  new Date().toISOString(),
+            ticket_id:   data.ticket_id ?? null,
+          }, ...prev]);
         } catch { /* bad payload */ }
       });
     };
 
-    connect();
-    return () => { es?.close(); };
-  }, [token]);
+    connect(token);
+
+    return () => {
+      es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [token]); // re-runs when token changes after proactive refresh
 
   const unreadCount = notifs.filter((n) => !n.is_read).length;
 
@@ -295,13 +314,10 @@ export const NotificationsPage: React.FC = () => {
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Notifications</h2>
             {unreadCount > 0 && (
-              <p className="text-sm text-slate-500 mt-0.5">
-                {unreadCount} unread
-              </p>
+              <p className="text-sm text-slate-500 mt-0.5">{unreadCount} unread</p>
             )}
           </div>
           <div className="flex items-center gap-3">
-            {/* Preference toggle */}
             {!prefLoading && pref && (
               <button
                 onClick={togglePref}
@@ -360,16 +376,10 @@ export const NotificationsPage: React.FC = () => {
                 className={clsx(
                   'flex items-start gap-4 px-6 py-4 transition-colors cursor-pointer',
                   idx !== notifs.length - 1 && 'border-b border-slate-100',
-                  n.is_read
-                    ? 'hover:bg-slate-50/50'
-                    : 'bg-blue-50/50 hover:bg-blue-50/80'
+                  n.is_read ? 'hover:bg-slate-50/50' : 'bg-blue-50/50 hover:bg-blue-50/80',
                 )}
               >
-                <div className={clsx(
-                  'w-2 h-2 rounded-full mt-2 flex-shrink-0',
-                  typeColor(n.type)
-                )} />
-
+                <div className={clsx('w-2 h-2 rounded-full mt-2 flex-shrink-0', typeColor(n.type))} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
@@ -381,24 +391,19 @@ export const NotificationsPage: React.FC = () => {
                   </div>
                   <p className={clsx(
                     'text-sm font-medium truncate',
-                    n.is_read ? 'text-slate-500' : 'text-slate-900'
+                    n.is_read ? 'text-slate-500' : 'text-slate-900',
                   )}>
                     {n.title ?? '—'}
                   </p>
                   {n.message && (
-                    <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-                      {n.message}
-                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{n.message}</p>
                   )}
                   <p className="text-xs text-slate-400 mt-1">
                     {format(new Date(n.created_at), 'MMM d, yyyy · h:mm a')}
                   </p>
                 </div>
-
                 <div className="flex-shrink-0 flex items-center gap-2 mt-1">
-                  {!n.is_read && (
-                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                  )}
+                  {!n.is_read && <div className="w-2 h-2 rounded-full bg-blue-500" />}
                   <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -407,15 +412,9 @@ export const NotificationsPage: React.FC = () => {
             ))
           )}
         </div>
-
       </div>
 
-      {selected && (
-        <NotifModal
-          notif={selected}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected && <NotifModal notif={selected} onClose={() => setSelected(null)} />}
     </MainLayout>
   );
 };

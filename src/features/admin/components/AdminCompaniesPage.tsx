@@ -217,7 +217,7 @@ export const AdminCompaniesPage: React.FC = () => {
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="New Company">
         <form onSubmit={handleSubmit(onCreate)} className="space-y-4" noValidate>
           <Input label="Company Name" placeholder="Acme Corp" error={errors.name?.message} {...register('name')} />
-          <Input label="Domain (optional)" placeholder="acme.com" error={errors.domain?.message} {...register('domain')} />
+          <Input label="Domain" placeholder="acme.com" error={errors.domain?.message} {...register('domain')} />
           <div className="flex gap-3 pt-2">
             <button
               type="button"
