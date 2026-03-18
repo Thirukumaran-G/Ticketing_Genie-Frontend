@@ -1,25 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Cell, PieChart, Pie, Legend,
 } from 'recharts';
 import { MainLayout } from '../../../layouts/MainLayout';
 import { Spinner } from '../../../components/ui';
-import { adminTicketService } from '../services/adminTicketService';
+import { adminTicketService, BreachDayRaw } from '../services/adminTicketService';
 import { adminAuthService } from '../services/adminAuthService';
 import { adminNav } from './adminNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Summary {
-  open_ticket_count:      number;
+  open_ticket_count:      number;   // actually "assigned" count — key kept for API compat
   total_sla_breaches:     number;
   avg_first_response_min: number;
   tickets_resolved_today: number;
 }
 interface PriorityRow { priority: string; count: number; }
-interface BreachDay   { day: string; breach_count: number; }
+
+// Identical to BreachDayRaw — aliased locally for readability
+type BreachDay = BreachDayRaw;
+
+// Normalize raw API rows — backend may not yet return the split fields
+const normalizeBreachDay = (r: any): BreachDay => ({
+  day:                   r.day,
+  breach_count:          r.breach_count          ?? 0,
+  response_breach_count: r.response_breach_count ?? 0,
+  resolve_breach_count:  r.resolve_breach_count  ?? 0,
+});
+
 interface ProductRow  {
   product_id: string; product_name: string;
   total: number; resolved: number; avg_resolution_time_min: number;
@@ -27,9 +37,14 @@ interface ProductRow  {
 interface SeverityRow    { severity: string; count: number; }
 interface StatusRow      { status: string; count: number; }
 interface ResolutionTime { avg_resolution_time_min: number; min_resolution_time_min: number; max_resolution_time_min: number; }
-interface BreachBySev    { severity: string; breached: number; }
 interface DayRow         { day: string; count: number; }
 interface CompanyRow     { company_id: string; total: number; name: string; }
+
+// ─── Valid ticket statuses (from VALID_TRANSITIONS) ───────────────────────────
+const VALID_STATUSES = [
+  'new', 'acknowledged', 'assigned', 'in_progress',
+  'on_hold', 'resolved', 'closed', 'reopened',
+];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -47,8 +62,9 @@ const PRI_COLOR: Record<string, string> = {
   P0: '#ef4444', P1: '#f97316', P2: '#eab308', P3: '#3b82f6',
 };
 const STATUS_COLOR: Record<string, string> = {
-  new: '#6366f1', acknowledged: '#8b5cf6', in_progress: '#3b82f6',
-  on_hold: '#f59e0b', resolved: '#22c55e', closed: '#64748b', reopened: '#ef4444',
+  new: '#6366f1', acknowledged: '#8b5cf6', assigned: '#06b6d4',
+  in_progress: '#3b82f6', on_hold: '#f59e0b',
+  resolved: '#22c55e', closed: '#64748b', reopened: '#ef4444',
 };
 
 const TT = {
@@ -73,32 +89,66 @@ const StatCard: React.FC<{
   </div>
 );
 
-const Sparkline: React.FC<{ data: BreachDay[] }> = ({ data }) => {
+/** Dual-line sparkline: response breaches (orange dashed) + resolve breaches (red solid) */
+const DualBreachSparkline: React.FC<{ data: BreachDay[] }> = ({ data }) => {
   if (!data.length) return <p className="text-xs text-slate-400 py-6 text-center">No breach data</p>;
   const W = 400, H = 80, PAD = 8;
-  const max = Math.max(...data.map(d => d.breach_count), 1);
-  const pts = data.map((d, i) => {
-    const x = PAD + (i / Math.max(data.length - 1, 1)) * (W - PAD * 2);
-    const y = H - PAD - (d.breach_count / max) * (H - PAD * 2);
-    return `${x},${y}`;
-  });
-  const polyline = pts.join(' ');
-  const area = `${PAD},${H - PAD} ${polyline} ${W - PAD},${H - PAD}`;
+  const maxVal = Math.max(...data.map(d => Math.max(d.response_breach_count, d.resolve_breach_count)), 1);
+
+  const toPoints = (key: 'response_breach_count' | 'resolve_breach_count') =>
+    data.map((d, i) => {
+      const x = PAD + (i / Math.max(data.length - 1, 1)) * (W - PAD * 2);
+      const y = H - PAD - (d[key] / maxVal) * (H - PAD * 2);
+      return `${x},${y}`;
+    });
+
+  const responsePts = toPoints('response_breach_count');
+  const resolvePts  = toPoints('resolve_breach_count');
+
+  const areaPath = (pts: string[]) => {
+    const last = pts[pts.length - 1].split(',').map(Number);
+    return `${PAD},${H - PAD} ${pts.join(' ')} ${last[0]},${H - PAD}`;
+  };
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="breach-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#breach-fill)" />
-      <polyline points={polyline} fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      {data.map((d, i) => {
-        const [x, y] = pts[i].split(',').map(Number);
-        return <circle key={i} cx={x} cy={y} r="3" fill="#ef4444" opacity={d.breach_count > 0 ? 1 : 0} />;
-      })}
-    </svg>
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="response-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="resolve-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={areaPath(responsePts)} fill="url(#response-fill)" />
+        <polyline points={responsePts.join(' ')} fill="none" stroke="#f97316" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="4 2" />
+        <polygon points={areaPath(resolvePts)} fill="url(#resolve-fill)" />
+        <polyline points={resolvePts.join(' ')} fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {data.map((d, i) => {
+          const [rx, ry] = responsePts[i].split(',').map(Number);
+          const [sx, sy] = resolvePts[i].split(',').map(Number);
+          return (
+            <g key={i}>
+              {d.response_breach_count > 0 && <circle cx={rx} cy={ry} r="3" fill="#f97316" />}
+              {d.resolve_breach_count  > 0 && <circle cx={sx} cy={sy} r="3" fill="#ef4444" />}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="flex items-center gap-4 mt-2">
+        <div className="flex items-center gap-1.5">
+          <svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#f97316" strokeWidth="2" strokeDasharray="4 2"/></svg>
+          <span className="text-[10px] text-slate-500 font-medium">Response SLA</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#ef4444" strokeWidth="2"/></svg>
+          <span className="text-[10px] text-slate-500 font-medium">Resolve SLA</span>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -122,45 +172,38 @@ const Stat: React.FC<{ label: string; value: string | number; accent?: string }>
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export const AdminDashboardPage: React.FC = () => {
-  const reportRef   = useRef<HTMLDivElement>(null);
+  const reportRef  = useRef<HTMLDivElement>(null);
   const [loading,      setLoading]      = useState(true);
   const [downloading,  setDownloading]  = useState(false);
 
-  // Summary / dashboard state
-  const [summary,    setSummary]    = useState<Summary | null>(null);
-  const [byPriority, setByPriority] = useState<PriorityRow[]>([]);
-  const [breachDays, setBreachDays] = useState<BreachDay[]>([]);
-  const [byProduct,  setByProduct]  = useState<ProductRow[]>([]);
-
-  // Reports state
-  const [bySeverity,   setBySeverity]   = useState<SeverityRow[]>([]);
-  const [byStatus,     setByStatus]     = useState<StatusRow[]>([]);
-  const [resolution,   setResolution]   = useState<ResolutionTime | null>(null);
-  const [breachBySev,  setBreachBySev]  = useState<BreachBySev[]>([]);
-  const [byDay,        setByDay]        = useState<DayRow[]>([]);
-  const [breachDays30, setBreachDays30] = useState<BreachDay[]>([]);
+  const [summary,       setSummary]       = useState<Summary | null>(null);
+  const [byPriority,    setByPriority]    = useState<PriorityRow[]>([]);
+  const [breachDays,    setBreachDays]    = useState<BreachDay[]>([]);
+  const [byProduct,     setByProduct]     = useState<ProductRow[]>([]);
+  const [bySeverity,    setBySeverity]    = useState<SeverityRow[]>([]);
+  const [byStatus,      setByStatus]      = useState<StatusRow[]>([]);
+  const [resolution,    setResolution]    = useState<ResolutionTime | null>(null);
+  const [byDay,         setByDay]         = useState<DayRow[]>([]);
+  const [breachDays30,  setBreachDays30]  = useState<BreachDay[]>([]);
   const [byProductFull, setByProductFull] = useState<ProductRow[]>([]);
-  const [topCompanies, setTopCompanies] = useState<CompanyRow[]>([]);
+  const [topCompanies,  setTopCompanies]  = useState<CompanyRow[]>([]);
 
   const load = async () => {
     setLoading(true);
     try {
       const [
         s, p, d, prod, authProducts,
-        sev, status, res, breachSev, days,
+        sev, status, res, days,
         pri, breach, prodFull, companies, authCompanies,
       ] = await Promise.all([
-        // Dashboard
         adminTicketService.reportDashboardSummary(),
         adminTicketService.reportOpenByPriority(),
         adminTicketService.reportSLABreachesByDay(),
         adminTicketService.reportTicketsByProduct(),
         adminAuthService.listProducts(),
-        // Reports
         adminTicketService.reportTicketsBySeverity(),
         adminTicketService.reportTicketsByStatus(),
         adminTicketService.reportAvgResolutionTime(),
-        adminTicketService.reportSLABreachBySeverity(),
         adminTicketService.reportTicketsByDay(),
         adminTicketService.reportOpenByPriority(),
         adminTicketService.reportSLABreachesByDay(),
@@ -169,10 +212,11 @@ export const AdminDashboardPage: React.FC = () => {
         adminAuthService.listCompanies(),
       ]);
 
-      // ── Dashboard ──
       setSummary(s);
       setByPriority(p.open_tickets_by_priority);
-      setBreachDays(d.sla_breaches_by_day.slice(-14));
+
+      // normalizeBreachDay guards against old backend shape (missing split fields)
+      setBreachDays(d.sla_breaches_by_day.slice(-14).map(normalizeBreachDay));
 
       const nameMap: Record<string, string> = {};
       authProducts.forEach((ap: { id: string; name: string }) => { nameMap[ap.id] = ap.name; });
@@ -183,13 +227,15 @@ export const AdminDashboardPage: React.FC = () => {
           .slice(0, 5),
       );
 
-      // ── Reports ──
       setBySeverity(sev.tickets_by_severity);
-      setByStatus(status.tickets_by_status);
+      setByStatus(
+        (status.tickets_by_status as StatusRow[]).filter(r => VALID_STATUSES.includes(r.status))
+      );
       setResolution(res);
-      setBreachBySev(breachSev.sla_breach_by_severity);
       setByDay(days.tickets_by_day);
-      setBreachDays30(breach.sla_breaches_by_day.slice(-30));
+
+      // same normalizer for the 30-day series
+      setBreachDays30(breach.sla_breaches_by_day.slice(-30).map(normalizeBreachDay));
 
       const companyMap: Record<string, string> = {};
       authCompanies.forEach((c: any) => { companyMap[c.id] = c.name; });
@@ -278,26 +324,25 @@ export const AdminDashboardPage: React.FC = () => {
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Overview</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="🎫" label="Open Tickets"       value={summary?.open_ticket_count ?? '—'}                    sub="Across all priorities" />
+                <StatCard icon="📋" label="Assigned Tickets"   value={summary?.open_ticket_count ?? '—'}                    sub="Status: assigned" />
                 <StatCard icon="✅" label="Resolved Today"     value={summary?.tickets_resolved_today ?? '—'}               accent="text-emerald-600" sub="UTC day" />
                 <StatCard icon="⏱" label="Avg First Response" value={summary ? `${summary.avg_first_response_min}m` : '—'} sub="All time average" />
                 <StatCard icon="🚨" label="Total SLA Breaches" value={summary?.total_sla_breaches ?? '—'}                   accent="text-red-500" sub="All time" />
               </div>
             </div>
 
-            {/* ══ SECTION 2: Priority & Product (dashboard cards) ══ */}
+            {/* ══ SECTION 2: Assigned by Priority & Product ══ */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-              {/* Priority breakdown */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">Open by Priority</h3>
+                  <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">Assigned by Priority</h3>
                   <span className="text-xs text-slate-400 tabular-nums">
                     {byPriority.reduce((s, r) => s + r.count, 0)} total
                   </span>
                 </div>
                 {byPriority.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-6 text-center">No open tickets</p>
+                  <p className="text-xs text-slate-400 py-6 text-center">No assigned tickets</p>
                 ) : (
                   <div className="space-y-3">
                     {(['P0','P1','P2','P3'] as const).map(p => {
@@ -322,7 +367,6 @@ export const AdminDashboardPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Tickets by product */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">Tickets by Product</h3>
@@ -357,20 +401,25 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
             </div>
 
-            {/* ══ SECTION 3: SLA Breach Sparkline (14-day) ══ */}
+            {/* ══ SECTION 3: Dual SLA Breach Sparkline (14-day) ══ */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">SLA Breach Trend</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Last 14 days</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Last 14 days — response vs resolve</p>
                 </div>
                 {breachDays.length > 0 && (
-                  <span className="text-xs font-semibold text-red-500 tabular-nums">
-                    {breachDays.reduce((s, d) => s + d.breach_count, 0)} breaches
-                  </span>
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs font-semibold text-orange-500 tabular-nums">
+                      {breachDays.reduce((s, d) => s + d.response_breach_count, 0)} response
+                    </span>
+                    <span className="text-xs font-semibold text-red-500 tabular-nums">
+                      {breachDays.reduce((s, d) => s + d.resolve_breach_count, 0)} resolve
+                    </span>
+                  </div>
                 )}
               </div>
-              <Sparkline data={breachDays} />
+              <DualBreachSparkline data={breachDays} />
               {breachDays.length > 0 && (
                 <div className="flex justify-between mt-1 text-[10px] text-slate-400">
                   <span>{breachDays[0]?.day}</span>
@@ -384,7 +433,6 @@ export const AdminDashboardPage: React.FC = () => {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Detailed Reports</p>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
-                {/* 1. Tickets by Severity */}
                 <Section title="Tickets by Severity" sub="Distribution of all tickets across severity levels">
                   {bySeverity.length === 0 ? <Empty /> : (
                     <ResponsiveContainer width="100%" height={220}>
@@ -401,8 +449,7 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
-                {/* 2. Tickets by Status */}
-                <Section title="Tickets by Status" sub="Current ticket distribution across all workflow statuses">
+                <Section title="Tickets by Status" sub="Current ticket distribution across valid workflow statuses">
                   {byStatus.length === 0 ? <Empty /> : (
                     <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
@@ -423,7 +470,6 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
-                {/* 3. Resolution Time */}
                 <Section title="Resolution Time" sub="How long tickets take to resolve (minutes)">
                   {!resolution ? <Empty /> : (
                     <div className="grid grid-cols-3 gap-4">
@@ -434,24 +480,6 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
-                {/* 4. SLA Breach by Severity */}
-                <Section title="SLA Breaches by Severity" sub="Which severity levels are breaching SLA most">
-                  {breachBySev.length === 0 ? <Empty /> : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={breachBySev} barSize={48}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="severity" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip {...TT} />
-                        <Bar dataKey="breached" name="Breached" radius={[6,6,0,0]}>
-                          {breachBySev.map(r => <Cell key={r.severity} fill={SEV_COLOR[r.severity] ?? '#94a3b8'} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </Section>
-
-                {/* 5. Ticket Creation Trend — full width */}
                 <div className="xl:col-span-2">
                   <Section title="Ticket Creation Trend" sub="Number of tickets created per day over the last 30 days">
                     {byDay.length === 0 ? <Empty /> : (
@@ -476,8 +504,7 @@ export const AdminDashboardPage: React.FC = () => {
                   </Section>
                 </div>
 
-                {/* 6. Open by Priority (chart) */}
-                <Section title="Open Tickets by Priority" sub="Current open tickets broken down by priority level">
+                <Section title="Assigned Tickets by Priority" sub="Currently assigned tickets broken down by priority level">
                   {byPriority.length === 0 ? <Empty /> : (
                     <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={byPriority} barSize={48}>
@@ -485,7 +512,7 @@ export const AdminDashboardPage: React.FC = () => {
                         <XAxis dataKey="priority" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
                         <Tooltip {...TT} />
-                        <Bar dataKey="count" name="Open Tickets" radius={[6,6,0,0]}>
+                        <Bar dataKey="count" name="Assigned Tickets" radius={[6,6,0,0]}>
                           {byPriority.map(r => <Cell key={r.priority} fill={PRI_COLOR[r.priority] ?? '#94a3b8'} />)}
                         </Bar>
                       </BarChart>
@@ -493,8 +520,7 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
-                {/* 7. SLA Breach Trend (30-day) */}
-                <Section title="SLA Breach Trend (30 days)" sub="SLA resolution breaches over the last 30 days">
+                <Section title="SLA Breach Trend (30 days)" sub="Response SLA (dashed orange) vs Resolve SLA (solid red) breaches">
                   {breachDays30.length === 0 ? <Empty /> : (
                     <ResponsiveContainer width="100%" height={220}>
                       <LineChart data={breachDays30}>
@@ -506,8 +532,14 @@ export const AdminDashboardPage: React.FC = () => {
                         />
                         <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
                         <Tooltip {...TT} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
                         <Line
-                          type="monotone" dataKey="breach_count" name="Breaches"
+                          type="monotone" dataKey="response_breach_count" name="Response SLA"
+                          stroke="#f97316" strokeWidth={2} strokeDasharray="5 3" dot={false}
+                          activeDot={{ r: 5, fill: '#f97316' }}
+                        />
+                        <Line
+                          type="monotone" dataKey="resolve_breach_count" name="Resolve SLA"
                           stroke="#ef4444" strokeWidth={2.5} dot={false}
                           activeDot={{ r: 5, fill: '#ef4444' }}
                         />
@@ -516,7 +548,6 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
-                {/* 8. Tickets by Product (full, horizontal bar) */}
                 <Section title="Tickets by Product" sub="Total vs resolved ticket volume per product">
                   {byProductFull.length === 0 ? <Empty /> : (
                     <ResponsiveContainer width="100%" height={Math.max(220, byProductFull.length * 50)}>
@@ -536,7 +567,6 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
-                {/* 9. Top Companies */}
                 <Section title="Top Companies by Ticket Volume" sub="Companies generating the most support tickets">
                   {topCompanies.length === 0 ? <Empty /> : (
                     <div className="space-y-3">

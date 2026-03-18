@@ -9,6 +9,14 @@ import {
   TeamMemberResponse,
 } from '../../../types';
 
+// Shared breach-day shape — includes both legacy and new split fields
+export interface BreachDayRaw {
+  day: string;
+  breach_count: number;
+  response_breach_count: number;
+  resolve_breach_count: number;
+}
+
 export const adminTicketService = {
   // Tiers / Products (proxied)
   listTiers:    () =>
@@ -63,8 +71,11 @@ export const adminTicketService = {
   // Reports
   reportOpenByPriority:    () =>
     ticketClient.get<{ open_tickets_by_priority: { priority: string; count: number }[] }>('/admin/reports/open-tickets-by-priority').then(r => r.data),
+
+  // ← Updated: now returns split response + resolve breach counts
   reportSLABreachesByDay:  () =>
-    ticketClient.get<{ sla_breaches_by_day: { day: string; breach_count: number }[] }>('/admin/reports/sla-breaches-by-day').then(r => r.data),
+    ticketClient.get<{ sla_breaches_by_day: BreachDayRaw[] }>('/admin/reports/sla-breaches-by-day').then(r => r.data),
+
   reportFirstResponseTime: () =>
     ticketClient.get<{ average_first_response_time_min: number; median_first_response_time_min: number }>('/admin/reports/first-response-time').then(r => r.data),
   reportTicketsByProduct:  () =>
@@ -98,7 +109,6 @@ export const adminTicketService = {
     ticketClient.post<TeamMemberResponse>(`/admin/teams/${teamId}/members`, {
       user_id:    p.user_id,
       experience: p.experience,
-      // send BOTH flat and nested so backend accepts either format
       skill_text: p.skill_text,
       skills:     { skill_text: p.skill_text ?? '' },
     }).then(r => r.data),

@@ -5,6 +5,8 @@ import { clsx } from 'clsx';
 import { useAuth } from '../features/auth';
 import { useAppSelector } from '../app/store';
 import { notificationsService } from '../features/notifications/services/notificationsService';
+import { ENV } from '../config/env';
+
 
 export interface NavItem {
   label: string;
@@ -160,7 +162,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, navItems, page
     sseRef.current?.close();
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
 
-    const url = `/api/v1/notifications/stream?token=${encodeURIComponent(token)}`;
+    const url = `${ENV.TICKET_BASE}/notifications/stream?token=${encodeURIComponent(token)}`;
     const es  = new EventSource(url);
     sseRef.current = es;
 

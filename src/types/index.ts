@@ -71,6 +71,8 @@ export interface TicketQueueItem {
   tier_snapshot?: string;
   sla_response_due?: string;
   sla_resolve_due?: string;
+  sla_breached_at?: string;           
+  response_sla_breached_at?: string;  
   created_at: string;
 }
 
@@ -85,8 +87,6 @@ export interface TicketDetail extends TicketQueueItem {
   override_reason?:            string;
   ai_draft?:                   string;
   first_response_at?:          string;
-  sla_breached_at?:            string;
-  response_sla_breached_at?:   string;
   reopen_count:                number;
   resolved_at?:                string;
   closed_at?:                  string;

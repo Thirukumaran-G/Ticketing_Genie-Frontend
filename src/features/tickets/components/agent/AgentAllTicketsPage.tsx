@@ -9,7 +9,7 @@ import { StatusBadge, SeverityDot, PriorityLabel } from '../shared/TicketBadges'
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
 import { fetchAgentAllTickets } from '../../slices/ticketsSlice';
 import { agentNav } from './agentNav';
-import { TicketDetail } from '../../../../types';
+import { TicketQueueItem } from '../../../../types';
 
 const STATUSES = ['all','assigned', 'in_progress', 'on_hold',
   'resolved', 'closed', 'reopened'];
@@ -58,7 +58,7 @@ const SLACell: React.FC<{
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-const Row: React.FC<{ ticket: TicketDetail }> = ({ ticket }) => (
+const Row: React.FC<{ ticket: TicketQueueItem }> = ({ ticket }) => (
   <Link to={`/tickets/agent/${ticket.id}`} className="group block">
     <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 hover:bg-blue-50/60 transition-colors">
 

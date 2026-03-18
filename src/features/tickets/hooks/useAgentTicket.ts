@@ -15,7 +15,7 @@ export const useAgentTicket = (ticketId: string) => {
 
   const submitComment = useCallback(async () => {
     if (!commentText.trim()) return;
-    await ticketsService.postComment(ticketId, commentText);
+    await ticketsService.postAgentComment(ticketId, commentText);
     setCommentText('');
     dispatch(fetchAgentTicket(ticketId));
   }, [dispatch, ticketId, commentText]);

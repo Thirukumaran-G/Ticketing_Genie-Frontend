@@ -15,8 +15,8 @@ interface TicketsState {
   myTicketDetail: CustomerTicketDetail | null;
   // Agent
   agentQueue: TicketQueueItem[];
-  agentTickets: TicketDetail[];
-  agentTicketDetail: TicketDetail | null;
+  agentTickets: TicketQueueItem[];
+  agentTicketDetail: TLTicketDetail | null;
   // TeamLead
   tlQueue: TicketQueueItem[];
   tlTickets: TLTicketDetail[];
