@@ -9,13 +9,24 @@ import { AuthLayout } from '../../../layouts/AuthLayout';
 import { Button, Input } from '../../../components/ui/index';
 import { authService } from '../services/authService';
 
-const schema = z.object({ email: z.string().email('Enter a valid email') });
+const schema = z.object({
+  email: z.string().email('Enter a valid email address.'),
+});
 type Form = z.infer<typeof schema>;
 
 export const ForgotPasswordPage: React.FC = () => {
-  const [sent, setSent] = useState(false);
+  const [sent, setSent]       = useState(false);
   const [loading, setLoading] = useState(false);
-  const { register, handleSubmit, formState: { errors }, getValues } = useForm<Form>({ resolver: zodResolver(schema) });
+
+  const { register, handleSubmit, formState: { errors }, getValues } = useForm<Form>({
+    resolver: zodResolver(schema),
+  });
+
+  // Client validation → toast, no inline
+  const onInvalid = (errs: typeof errors) => {
+    const first = Object.values(errs)[0]?.message;
+    if (first) toast.error(first);
+  };
 
   const onSubmit = async (d: Form) => {
     try {
@@ -23,7 +34,8 @@ export const ForgotPasswordPage: React.FC = () => {
       await authService.forgotPassword(d.email);
       setSent(true);
     } catch {
-      toast.error('Something went wrong. Please try again.');
+      // Always show success to prevent email enumeration
+      setSent(true);
     } finally {
       setLoading(false);
     }
@@ -38,8 +50,9 @@ export const ForgotPasswordPage: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <p className="text-slate-500 text-sm">Reset link sent to</p>
-          <p className="text-slate-900 font-semibold mt-1 mb-6">{getValues('email')}</p>
+          <p className="text-slate-500 text-sm">If an account exists for</p>
+          <p className="text-slate-900 font-semibold mt-1 mb-2">{getValues('email')}</p>
+          <p className="text-slate-400 text-xs mb-6">a reset link has been sent — check your inbox and spam folder.</p>
           <Link to="/login" className="text-sm text-slate-700 hover:text-blue-600">← Back to sign in</Link>
         </div>
       </AuthLayout>
@@ -48,9 +61,23 @@ export const ForgotPasswordPage: React.FC = () => {
 
   return (
     <AuthLayout title="Forgot password" subtitle="Enter your email and we'll send a reset link">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-        <Input label="Email address" type="email" placeholder="you@company.com" error={errors.email?.message} {...register('email')} />
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-5" noValidate>
+
+        <Input
+          label="Email address"
+          type="email"
+          placeholder="you@company.com"
+          autoComplete="email"
+          leftIcon={
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+            </svg>
+          }
+          {...register('email')}
+        />
+
         <Button type="submit" full size="lg" loading={loading}>Send reset link</Button>
+
         <p className="text-center text-sm text-slate-600">
           <Link to="/login" className="text-slate-700 hover:text-blue-600">← Back to sign in</Link>
         </p>

@@ -30,11 +30,10 @@ export const adminAuthService = {
     authClient.get<CompanyResponse>(`/admin/companies/${id}`).then(r => r.data),
   createCompany:    (p: CompanyCreateRequest) =>
     authClient.post<CompanyResponse>('/admin/companies', p).then(r => r.data),
-  updateCompany:    (id: string, p: CompanyUpdateRequest) =>       // ← add this
+  updateCompany:    (id: string, p: CompanyUpdateRequest) =>
     authClient.patch<CompanyResponse>(`/admin/companies/${id}`, p).then(r => r.data),
   deleteCompany:    (id: string) =>
     authClient.delete(`/admin/companies/${id}`),
-
 
   // Products
   listProducts:     () =>
@@ -50,7 +49,7 @@ export const adminAuthService = {
   listTiers:        () =>
     authClient.get<TierResponse[]>('/admin/tiers').then(r => r.data),
 
-  // Roles  ← new
+  // Roles
   listRoles:        () =>
     authClient.get<RoleResponse[]>('/admin/roles').then(r => r.data),
 
@@ -65,10 +64,10 @@ export const adminAuthService = {
     authClient.delete(`/admin/companies/${companyId}/subscriptions/${subId}`),
 
   // Users
-  listUsers:     () =>
+  listUsers:  () =>
     authClient.get<AdminUserResponse[]>('/admin/users').then(r => r.data),
-  createUser:    (p: UserCreateRequest) =>           // ← new
+  createUser: (p: UserCreateRequest) =>
     authClient.post<AdminUserResponse>('/admin/users', p).then(r => r.data),
-  deactivateUser: (userId: string) =>
-    authClient.patch(`/admin/users/${userId}/deactivate`).then(r => r.data),
+  deleteUser: (userId: string) =>
+    authClient.delete(`/admin/users/${userId}`),
 };

@@ -14,23 +14,29 @@ const init: AuthState = {
   error:           null,
 };
 
+// ── Error extractor ───────────────────────────────────────────────────────────
+// Surfaces the most specific human-readable message available:
+//   1. VALIDATION_ERROR details array  → first field message (exact Pydantic text)
+//   2. data.detail                     → FastAPI default string
+//   3. data.message                    → our AppException message
+//   4. Generic fallback
 const apiErr = (e: unknown): string => {
   const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
   if (!data) return 'Something went wrong. Please try again.';
-  if (typeof data.message === 'string' && data.message) {
-    if (
-      data.error_code === 'VALIDATION_ERROR' &&
-      Array.isArray(data.details) &&
-      data.details.length > 0
-    ) {
-      const first = data.details[0] as Record<string, unknown>;
-      const field = typeof first.field   === 'string' ? first.field   : '';
-      const msg   = typeof first.message === 'string' ? first.message : '';
-      if (field && msg) return `${field}: ${msg}`;
-      if (msg)          return msg;
-    }
-    return data.message;
+
+  if (
+    data.error_code === 'VALIDATION_ERROR' &&
+    Array.isArray(data.details) &&
+    data.details.length > 0
+  ) {
+    const first = data.details[0] as Record<string, unknown>;
+    const msg   = typeof first.message === 'string' ? first.message : '';
+    if (msg) return msg;
   }
+
+  if (typeof data.detail  === 'string' && data.detail)  return data.detail;
+  if (typeof data.message === 'string' && data.message) return data.message;
+
   return 'Something went wrong. Please try again.';
 };
 
@@ -39,8 +45,7 @@ export const loginThunk = createAsyncThunk(
   async (p: { email: string; password: string }, { rejectWithValue }) => {
     try {
       const tokens = await authService.login(p.email, p.password);
-      // Pass token explicitly — Redux not updated yet so interceptor returns null
-      const user = await authService.me(tokens.access_token);
+      const user   = await authService.me(tokens.access_token);
       setTokens(tokens.access_token, tokens.refresh_token);
       return { ...tokens, user };
     } catch (e) {
@@ -54,8 +59,7 @@ export const registerThunk = createAsyncThunk(
   async (p: RegisterData, { rejectWithValue }) => {
     try {
       const tokens = await authService.register(p);
-      // Pass token explicitly — Redux not updated yet so interceptor returns null
-      const user = await authService.me(tokens.access_token);
+      const user   = await authService.me(tokens.access_token);
       setTokens(tokens.access_token, tokens.refresh_token);
       return { ...tokens, user };
     } catch (e) {
@@ -67,9 +71,7 @@ export const registerThunk = createAsyncThunk(
 export const logoutThunk = createAsyncThunk(
   'auth/logout',
   async () => {
-    try {
-      await authService.logout();
-    } catch {}
+    try { await authService.logout(); } catch {}
     clearTokens();
   },
 );
@@ -78,8 +80,8 @@ const authSlice = createSlice({
   name:         'auth',
   initialState: init,
   reducers: {
-    setUser: (s, a: PayloadAction<User>) => { s.user = a.payload; },
-    clearError: (s) => { s.error = null; },
+    setUser:     (s, a: PayloadAction<User>) => { s.user = a.payload; },
+    clearError:  (s) => { s.error = null; },
     forceLogout: (s) => {
       s.user            = null;
       s.accessToken     = null;
@@ -96,7 +98,7 @@ const authSlice = createSlice({
     },
   },
   extraReducers: (b) => {
-    b.addCase(loginThunk.pending,   (s) => { s.isLoading = true; s.error = null; });
+    b.addCase(loginThunk.pending,   (s) => { s.isLoading = true;  s.error = null; });
     b.addCase(loginThunk.fulfilled, (s, a) => {
       s.isLoading       = false;
       s.accessToken     = a.payload.access_token;
@@ -110,7 +112,7 @@ const authSlice = createSlice({
       s.error     = a.payload as string;
     });
 
-    b.addCase(registerThunk.pending,   (s) => { s.isLoading = true; s.error = null; });
+    b.addCase(registerThunk.pending,   (s) => { s.isLoading = true;  s.error = null; });
     b.addCase(registerThunk.fulfilled, (s, a) => {
       s.isLoading       = false;
       s.accessToken     = a.payload.access_token;

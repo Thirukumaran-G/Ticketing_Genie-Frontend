@@ -89,11 +89,20 @@ export const ticketsService = {
       .then((r) => r.data);
   },
 
+  /**
+   * getCustomerAttachmentSignedUrl
+   * Calls the backend JSON endpoint which returns { url: string } — a GCS
+   * signed URL valid for 30 min. Use the returned URL directly as <img src>
+   * or window.open(). Never pass it through XHR/axios (CORS would block it).
+   */
+  getCustomerAttachmentSignedUrl: (ticketId: string, attachmentId: string): Promise<string> =>
+    ticketClient
+      .get<{ url: string }>(`/customer/tickets/${ticketId}/attachments/${attachmentId}/signed-url`)
+      .then((r) => r.data.url),
+
+  // kept for backward compat — NOT used for image/download display any more
   getAttachmentUrl: (ticketId: string, attachmentId: string) =>
     `${ENV.TICKET_BASE}/customer/tickets/${ticketId}/attachments/${attachmentId}`,
-
-  getTlAttachmentUrl: (ticketId: string, attachmentId: string) =>
-    `${ENV.TICKET_BASE}/teamlead/tickets/${ticketId}/attachments/${attachmentId}`,
 
   // ── Agent routes ──────────────────────────────────────────────────────────
 
@@ -149,6 +158,18 @@ export const ticketsService = {
       .then((r) => r.data);
   },
 
+  /**
+   * getAgentAttachmentSignedUrl
+   * Calls the backend JSON endpoint which returns { url: string } — a GCS
+   * signed URL valid for 30 min. Use the returned URL directly as <img src>
+   * or window.open(). Never pass it through XHR/axios (CORS would block it).
+   */
+  getAgentAttachmentSignedUrl: (ticketId: string, attachmentId: string): Promise<string> =>
+    ticketClient
+      .get<{ url: string }>(`/agent/tickets/${ticketId}/attachments/${attachmentId}/signed-url`)
+      .then((r) => r.data.url),
+
+  // kept for backward compat
   getAgentAttachmentUrl: (ticketId: string, attachmentId: string) =>
     `${ENV.TICKET_BASE}/agent/tickets/${ticketId}/attachments/${attachmentId}`,
 
@@ -271,6 +292,21 @@ export const ticketsService = {
       .get(`/teamlead/tickets/${ticketId}/breach-justifications`)
       .then((r) => r.data),
 
+  /**
+   * getTLAttachmentSignedUrl
+   * Calls the backend JSON endpoint which returns { url: string } — a GCS
+   * signed URL valid for 30 min. Use the returned URL directly as <img src>
+   * or window.open(). Never pass it through XHR/axios (CORS would block it).
+   */
+  getTLAttachmentSignedUrl: (ticketId: string, attachmentId: string): Promise<string> =>
+    ticketClient
+      .get<{ url: string }>(`/teamlead/tickets/${ticketId}/attachments/${attachmentId}/signed-url`)
+      .then((r) => r.data.url),
+
+  // kept for backward compat
+  getTlAttachmentUrl: (ticketId: string, attachmentId: string) =>
+    `${ENV.TICKET_BASE}/teamlead/tickets/${ticketId}/attachments/${attachmentId}`,
+
   // ── Notification Templates ────────────────────────────────────────────────
 
   listNotificationTemplates: () =>
@@ -372,10 +408,6 @@ export const ticketsService = {
       .then((r) => r.data),
 
   // ── SSE stream URLs ───────────────────────────────────────────────────────
-  // Token is NOT passed in the URL — the EventSource connection goes through
-  // the axios interceptor which attaches the Bearer header automatically.
-  // If your SSE endpoint requires the token in the URL (e.g. native EventSource
-  // which can't set headers), pass it explicitly at the call site instead.
 
   getAgentQueueStreamUrl: () =>
     `${ENV.TICKET_BASE}/agent/queue/stream`,

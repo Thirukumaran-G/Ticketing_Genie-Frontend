@@ -24,9 +24,10 @@ export const useAdminUsers = () => {
     ? users
     : users.filter(u => u.role === filter);
 
-  const deactivate = async (id: string) => {
-    await adminAuthService.deactivateUser(id);
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: false } : u));
+  const deleteUser = async (id: string) => {
+    await adminAuthService.deleteUser(id);
+    // Remove from local list immediately — no reload needed
+    setUsers(prev => prev.filter(u => u.id !== id));
   };
 
   const createUser = async (payload: UserCreateRequest): Promise<AdminUserResponse> => {
@@ -40,5 +41,5 @@ export const useAdminUsers = () => {
     }
   };
 
-  return { users, filtered, loading, creating, filter, setFilter, deactivate, createUser };
+  return { users, filtered, loading, creating, filter, setFilter, deleteUser, createUser };
 };
