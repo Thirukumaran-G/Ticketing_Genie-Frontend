@@ -6,10 +6,11 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   error?: string;
   hint?: string;
   leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, leftIcon, className, id, ...rest }, ref) => {
+  ({ label, error, hint, leftIcon, rightIcon, className, id, ...rest }, ref) => {
     const uid = id || label?.toLowerCase().replace(/\s+/g, '_');
     return (
       <div className="w-full">
@@ -30,10 +31,17 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               'w-full bg-white border text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 text-sm',
               'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all',
               error ? 'border-red-400' : 'border-slate-200 hover:border-blue-300',
-              leftIcon && 'pl-10', className,
+              leftIcon && 'pl-10',
+              rightIcon && 'pr-10',
+              className,
             )}
             {...rest}
           />
+          {rightIcon && (
+            <div className="absolute inset-y-0 right-3 flex items-center text-slate-400">
+              {rightIcon}
+            </div>
+          )}
         </div>
         {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
         {hint && !error && <p className="mt-1.5 text-xs text-slate-600">{hint}</p>}

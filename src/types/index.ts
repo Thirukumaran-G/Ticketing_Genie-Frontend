@@ -159,8 +159,8 @@ export interface NotificationPreference {
 }
 
 // ── Admin — Auth service ──────────────────────────────────────────────────────
-export interface CompanyResponse       { id: string; name: string; is_active: boolean; }
-export interface ProductResponse       { id: string; name: string; is_active: boolean; code: string; }
+export interface CompanyResponse { id: string; name: string; domain?: string; is_active: boolean; }
+export interface ProductResponse       { id: string; name: string; is_active: boolean; code: string; description: string; }
 export interface TierResponse          { id: string; name: string; }
 export interface RoleResponse          { id: string; name: string; }
 export interface SubscriptionResponse  { id: string; company_id: string; product_id: string; tier_id: string; is_active: boolean; }

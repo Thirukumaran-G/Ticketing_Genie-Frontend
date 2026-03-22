@@ -1,5 +1,4 @@
-// src/features/auth/components/RegisterPage.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,26 +9,16 @@ import { Button, Input } from '../../../components/ui/index';
 import { useAuth } from '../hooks/useAuth';
 import { ROLE_HOME } from '../../../config';
 
-// ── Schema ────────────────────────────────────────────────────────────────────
-
 const schema = z.object({
-  full_name: z
-    .string()
-    .min(1,   'Full name is required.')
-    .max(255, 'Name is too long.'),
-
-  email: z
-    .string()
-    .email('Enter a valid email address.'),
-
-  password: z
+  full_name: z.string().min(1, 'Full name is required.').max(255, 'Name is too long.'),
+  email:     z.string().email('Enter a valid email address.'),
+  password:  z
     .string()
     .min(8,   'Password must be at least 8 characters.')
     .max(128, 'Password is too long.')
     .refine((v) => /[A-Z]/.test(v), 'Password must contain at least one uppercase letter.')
     .refine((v) => /[a-z]/.test(v), 'Password must contain at least one lowercase letter.')
     .refine((v) => /[0-9]/.test(v), 'Password must contain at least one number.'),
-
   ph_no: z
     .string()
     .optional()
@@ -42,14 +31,27 @@ const schema = z.object({
       'Phone number must start with 6, 7, 8, or 9.',
     ),
 });
-
 type Form = z.infer<typeof schema>;
 
-// ── Component ─────────────────────────────────────────────────────────────────
+const EyeIcon: React.FC<{ show: boolean; onClick: () => void }> = ({ show, onClick }) => (
+  <button type="button" onClick={onClick} className="text-slate-400 hover:text-slate-600 transition-colors focus:outline-none">
+    {show ? (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+      </svg>
+    ) : (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+      </svg>
+    )}
+  </button>
+);
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { register: registerUser, isLoading, error, isAuthenticated, user, clearError } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
@@ -60,12 +62,10 @@ export const RegisterPage: React.FC = () => {
     if (isAuthenticated && user) navigate(ROLE_HOME[user.role] ?? '/');
   }, [isAuthenticated, user, navigate]);
 
-  // Server errors → toast
   useEffect(() => {
     if (error) { toast.error(error); clearError(); }
   }, [error, clearError]);
 
-  // Client validation errors → toast first error only, no inline display
   const onInvalid = (errs: typeof errors) => {
     const first = Object.values(errs)[0]?.message;
     if (first) toast.error(first);
@@ -108,7 +108,7 @@ export const RegisterPage: React.FC = () => {
         <div>
           <Input
             label="Password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             placeholder="••••••••"
             autoComplete="new-password"
             leftIcon={
@@ -116,6 +116,7 @@ export const RegisterPage: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             }
+            rightIcon={<EyeIcon show={showPassword} onClick={() => setShowPassword(p => !p)} />}
             {...register('password')}
           />
           <p className="mt-1.5 text-xs text-slate-400">
@@ -136,9 +137,7 @@ export const RegisterPage: React.FC = () => {
           {...register('ph_no')}
         />
 
-        <Button type="submit" full size="lg" loading={isLoading}>
-          Create account
-        </Button>
+        <Button type="submit" full size="lg" loading={isLoading}>Create account</Button>
 
         <p className="text-center text-sm text-slate-600">
           Already have an account?{' '}

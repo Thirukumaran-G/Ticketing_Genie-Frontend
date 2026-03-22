@@ -273,7 +273,7 @@ export const TicketDetailPage: React.FC = () => {
   if (isLoading || !myTicketDetail) return <MainLayout navItems={customerNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
 
   const t = myTicketDetail;
-  const canReplyOrReopen = !['resolved'].includes(t.status);
+  const canReplyOrReopen = !['closed'].includes(t.status); 
   const canClose = t.status === 'resolved';
   const productName = t.product_id ? products.find((p) => p.id === String(t.product_id))?.name ?? null : null;
   const tierInfo = t.tier_snapshot ? getTierInfo(t.tier_snapshot) : null;

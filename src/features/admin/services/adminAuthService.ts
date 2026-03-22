@@ -14,6 +14,7 @@ interface ProductCreateRequest  { name: string; code: string; }
 interface ProductUpdateRequest  { name?: string; is_active?: boolean; }
 interface SubAssignRequest      { product_id: string; tier_id: string; }
 interface SubUpdateRequest      { tier_id?: string; is_active?: boolean; }
+interface ProductUpdateRequest { name?: string; description?: string; is_active?: boolean; }
 
 export interface UserCreateRequest {
   email:              string;

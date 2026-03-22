@@ -9,6 +9,7 @@ import { adminAuthService } from '../services/adminAuthService';
 import { adminTicketService } from '../services/adminTicketService';
 import { adminNav } from './adminNav';
 import { ProductResponse, ProductConfigResponse } from '../../../types';
+import { extractErrorMessage } from '../../../utils/errorUtils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,10 +25,17 @@ const SEV_STYLE: Record<string, string> = {
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
 const productSchema = z.object({
-  name: z.string().min(2, 'Min 2 chars'),
-  code: z.string().min(1, 'Required').max(100),
+  name:        z.string().min(2, 'Min 2 chars'),
+  code:        z.string().min(1, 'Required').max(100),
+  description: z.string().min(1, 'Description is required').max(1000, 'Max 1000 chars'),
 });
 type ProductForm = z.infer<typeof productSchema>;
+
+const editProductSchema = z.object({
+  name:        z.string().min(2, 'Min 2 chars'),
+  description: z.string().min(1, 'Description is required').max(1000, 'Max 1000 chars'),
+});
+type EditProductForm = z.infer<typeof editProductSchema>;
 
 const configSchema = z.object({
   min_severity:     z.string().optional(),
@@ -52,19 +60,37 @@ const Sel: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: str
   </div>
 );
 
+const Textarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; error?: string }> = ({
+  label, error, ...props
+}) => (
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-widest">{label}</label>
+    <textarea
+      rows={3}
+      className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
+      {...props}
+    />
+    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+  </div>
+);
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export const AdminProductsPage: React.FC = () => {
-  const [products,     setProducts]     = useState<ProductResponse[]>([]);
-  const [configs,      setConfigs]      = useState<ProductConfigResponse[]>([]);
-  const [loading,      setLoading]      = useState(true);
+  const [products,    setProducts]    = useState<ProductResponse[]>([]);
+  const [configs,     setConfigs]     = useState<ProductConfigResponse[]>([]);
+  const [loading,     setLoading]     = useState(true);
 
-  // Product modal
-  const [showCreate,   setShowCreate]   = useState(false);
-  const [submitting,   setSubmitting]   = useState(false);
-  const [deletingId,   setDeletingId]   = useState<string | null>(null);
+  // Create
+  const [showCreate,  setShowCreate]  = useState(false);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [deletingId,  setDeletingId]  = useState<string | null>(null);
 
-  // Config modal
+  // Edit
+  const [editTarget,     setEditTarget]     = useState<ProductResponse | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Config
   const [showConfig,   setShowConfig]   = useState(false);
   const [configTarget, setConfigTarget] = useState<ProductResponse | null>(null);
   const [editingCfg,   setEditingCfg]   = useState<ProductConfigResponse | null>(null);
@@ -80,13 +106,22 @@ export const AdminProductsPage: React.FC = () => {
   } = useForm<ProductForm>({ resolver: zodResolver(productSchema) });
 
   const {
+    register: regEdit,
+    handleSubmit: handleEditSubmit,
+    reset: resetEdit,
+    formState: { errors: editErrors },
+  } = useForm<EditProductForm>({ resolver: zodResolver(editProductSchema) });
+
+  const {
     register: regConfig,
     handleSubmit: handleConfig,
     reset: resetConfig,
     setValue: setConfigVal,
     watch: watchConfig,
-    formState: { errors: configErrors },
-  } = useForm<ConfigForm>({ resolver: zodResolver(configSchema), defaultValues: { default_escalate: false } });
+  } = useForm<ConfigForm>({
+    resolver: zodResolver(configSchema),
+    defaultValues: { default_escalate: false },
+  });
 
   const watchEscalate = watchConfig('default_escalate');
 
@@ -108,8 +143,6 @@ export const AdminProductsPage: React.FC = () => {
 
   useEffect(() => { load(); }, []);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
   const getConfig = (productId: string) =>
     configs.find(c => c.product_id === productId) ?? null;
 
@@ -121,8 +154,36 @@ export const AdminProductsPage: React.FC = () => {
       await adminAuthService.createProduct(d);
       toast.success('Product created');
       resetProduct(); setShowCreate(false); load();
-    } catch { toast.error('Failed to create product'); }
-    finally { setSubmitting(false); }
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openEdit = (p: ProductResponse) => {
+    setEditTarget(p);
+    resetEdit({
+      name:        p.name,
+      description: p.description ?? '',
+    });
+  };
+
+  const onEdit = async (d: EditProductForm) => {
+    if (!editTarget) return;
+    try {
+      setEditSubmitting(true);
+      await adminAuthService.updateProduct(editTarget.id, {
+        name:        d.name,
+        description: d.description,
+      });
+      toast.success('Product updated');
+      setEditTarget(null); resetEdit(); load();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setEditSubmitting(false);
+    }
   };
 
   const onDeleteProduct = async (p: ProductResponse) => {
@@ -132,8 +193,11 @@ export const AdminProductsPage: React.FC = () => {
       await adminAuthService.deleteProduct(p.id);
       toast.success('Product deleted');
       load();
-    } catch { toast.error('Failed to delete'); }
-    finally { setDeletingId(null); }
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   // ── Config CRUD ───────────────────────────────────────────────────────────
@@ -158,10 +222,12 @@ export const AdminProductsPage: React.FC = () => {
         default_escalate: d.default_escalate,
       });
       toast.success(editingCfg ? 'Config updated' : 'Config created');
-      setShowConfig(false); setConfigTarget(null); setEditingCfg(null);
-      load();
-    } catch { toast.error('Failed to save config'); }
-    finally { setSavingCfg(false); }
+      setShowConfig(false); setConfigTarget(null); setEditingCfg(null); load();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSavingCfg(false);
+    }
   };
 
   const onDeleteConfig = async (productId: string) => {
@@ -171,8 +237,11 @@ export const AdminProductsPage: React.FC = () => {
       await adminTicketService.deleteProductConfig(productId);
       toast.success('Config removed');
       load();
-    } catch { toast.error('Failed to delete config'); }
-    finally { setDeletingCfg(null); }
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setDeletingCfg(null);
+    }
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -202,9 +271,10 @@ export const AdminProductsPage: React.FC = () => {
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm w-full">
 
           {/* Table header */}
-          <div className="grid grid-cols-[1fr_140px_140px_160px_160px] px-6 py-3 bg-blue-600">
+          <div className="grid grid-cols-[1fr_110px_220px_130px_140px_180px] px-6 py-3 bg-blue-600">
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Product</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Code</p>
+            <p className="text-xs font-semibold text-white uppercase tracking-widest">Description</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Min Severity</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Auto-Escalate</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Actions</p>
@@ -222,17 +292,28 @@ export const AdminProductsPage: React.FC = () => {
               return (
                 <div
                   key={p.id}
-                  className={`grid grid-cols-[1fr_140px_140px_160px_160px] items-center px-6 py-4 border-b border-slate-100 last:border-0 ${
+                  className={`grid grid-cols-[1fr_110px_220px_130px_140px_180px] items-center px-6 py-4 border-b border-slate-100 last:border-0 ${
                     idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                   }`}
                 >
                   {/* Name */}
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{p.name}</p>
-                  </div>
+                  <p className="text-sm font-semibold text-slate-900">{p.name}</p>
 
                   {/* Code */}
                   <p className="text-sm font-mono text-slate-600">{p.code}</p>
+
+                  {/* Description */}
+                  <p
+                    className="text-sm text-slate-500 truncate pr-4"
+                    title={p.description ?? ''}
+                  >
+                    {p.description
+                      ? p.description.length > 55
+                        ? p.description.slice(0, 55) + '…'
+                        : p.description
+                      : <span className="text-slate-300">—</span>
+                    }
+                  </p>
 
                   {/* Min severity */}
                   <div>
@@ -269,9 +350,20 @@ export const AdminProductsPage: React.FC = () => {
                     <button
                       onClick={() => openConfigModal(p)}
                       className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors"
-                      title={cfg ? 'Edit config' : 'Add config'}
                     >
                       {cfg ? 'Config' : '+ Config'}
+                    </button>
+
+                    {/* Edit button */}
+                    <button
+                      onClick={() => openEdit(p)}
+                      className="p-1.5 rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                      title="Edit product"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 0l.172.172a2 2 0 010 2.828L12 15H9v-3z" />
+                      </svg>
                     </button>
 
                     {/* Remove config */}
@@ -328,16 +420,22 @@ export const AdminProductsPage: React.FC = () => {
       <Modal open={showCreate} onClose={() => { setShowCreate(false); resetProduct(); }} title="New Product">
         <form onSubmit={handleProduct(onCreate)} className="space-y-4" noValidate>
           <Input
-            label="Product Name"
+            label="Product Name *"
             placeholder="e.g. Cloud Platform"
             error={productErrors.name?.message}
             {...regProduct('name')}
           />
           <Input
-            label="Code"
+            label="Code *"
             placeholder="e.g. CLOUD_PLT"
             error={productErrors.code?.message}
             {...regProduct('code')}
+          />
+          <Textarea
+            label="Description *"
+            placeholder="Describe this product…"
+            error={productErrors.description?.message}
+            {...regProduct('description')}
           />
           <div className="flex gap-3 pt-2">
             <button
@@ -358,6 +456,44 @@ export const AdminProductsPage: React.FC = () => {
         </form>
       </Modal>
 
+      {/* ── Edit Product Modal ── */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => { setEditTarget(null); resetEdit(); }}
+        title={`Edit — ${editTarget?.name ?? ''}`}
+      >
+        <form onSubmit={handleEditSubmit(onEdit)} className="space-y-4" noValidate>
+          <Input
+            label="Product Name *"
+            placeholder="e.g. Cloud Platform"
+            error={editErrors.name?.message}
+            {...regEdit('name')}
+          />
+          <Textarea
+            label="Description *"
+            placeholder="Describe this product…"
+            error={editErrors.description?.message}
+            {...regEdit('description')}
+          />
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => { setEditTarget(null); resetEdit(); }}
+              className="flex-1 border border-slate-200 text-slate-700 font-semibold text-sm py-2.5 rounded-xl hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={editSubmitting}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {editSubmitting ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* ── Product Config Modal ── */}
       <Modal
         open={showConfig}
@@ -365,7 +501,6 @@ export const AdminProductsPage: React.FC = () => {
         title={editingCfg ? `Edit Config — ${configTarget?.name}` : `Add Config — ${configTarget?.name}`}
       >
         <form onSubmit={handleConfig(onSaveConfig)} className="space-y-4" noValidate>
-
           <Sel label="Min Severity (optional)" {...regConfig('min_severity')}>
             <option value="">No minimum</option>
             {SEVERITIES.map(s => (
@@ -373,7 +508,6 @@ export const AdminProductsPage: React.FC = () => {
             ))}
           </Sel>
 
-          {/* Auto-escalate toggle */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-widest">
               Auto-Escalate
