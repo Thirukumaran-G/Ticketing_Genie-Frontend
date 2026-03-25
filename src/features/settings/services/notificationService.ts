@@ -1,4 +1,3 @@
-// src/features/settings/services/notificationService.ts
 import { notificationClient } from '../../../lib/axios';
 
 export interface NotificationPreferenceResponse {

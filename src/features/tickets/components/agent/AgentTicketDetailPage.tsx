@@ -7,7 +7,7 @@ import { clsx } from 'clsx';
 import { MainLayout } from '../../../../layouts/MainLayout';
 import { PageLoader } from '../../../../components/ui/index';
 import { StatusBadge, SeverityDot, PriorityLabel, SLABreachPill } from '../shared/TicketBadges';
-import { AgentSLAPanel } from '../shared/SLAPanel';
+import { AgentSLAPanel } from '../shared/SLAPanel'; 
 import { BreachJustificationPanel } from './BreachJustificationPanel';
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
 import { fetchAgentTicket, fetchProducts, clearAgentTicketDetail } from '../../slices/ticketsSlice';
@@ -71,8 +71,6 @@ const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = 
 };
 
 // ── AuthImage ─────────────────────────────────────────────────────────────────
-// Fetches a GCS signed URL from the backend JSON endpoint, then sets it as the
-// native <img src>. The browser loads the image directly — no XHR, no CORS.
 const AuthImage: React.FC<{
   ticketId: string;
   attachmentId: string;
@@ -113,8 +111,6 @@ const AuthImage: React.FC<{
 };
 
 // ── openAttachment ────────────────────────────────────────────────────────────
-// Gets the signed URL from backend JSON, then opens it in a new tab.
-// The browser navigation is not subject to CORS.
 const openAttachment = async (ticketId: string, attachmentId: string) => {
   try {
     const url = await ticketsService.getAgentAttachmentSignedUrl(ticketId, attachmentId);
@@ -269,7 +265,6 @@ export const AgentTicketDetailPage: React.FC = () => {
   const [showReasonInput, setShowReasonInput] = useState(false);
   const [showUnassignModal, setShowUnassignModal] = useState(false);
   const [unassigning, setUnassigning] = useState(false);
-  const [enhancing, setEnhancing] = useState(false);
   const [commentFocused, setCommentFocused] = useState(false);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -277,7 +272,9 @@ export const AgentTicketDetailPage: React.FC = () => {
   const inProgressFiredRef = useRef(false);
 
   const customerName = customerInfo?.full_name || 'Customer';
-  const productName = agentTicketDetail?.product_id ? products.find((p) => p.id === String(agentTicketDetail.product_id))?.name ?? null : null;
+  const productName = agentTicketDetail?.product_id
+    ? products.find((p) => p.id === String(agentTicketDetail.product_id))?.name ?? null
+    : null;
 
   const loadThread = async () => {
     if (!ticketId) return;
@@ -296,8 +293,14 @@ export const AgentTicketDetailPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (ticketId) { dispatch(clearAgentTicketDetail()); dispatch(fetchAgentTicket(ticketId)); loadThread(); loadCustomerInfo(); }
-    if (!products.length) dispatch(fetchProducts());
+    if (ticketId) {
+      dispatch(clearAgentTicketDetail());
+      dispatch(fetchAgentTicket(ticketId));
+      loadThread();
+      loadCustomerInfo();
+    }
+    // ✅ Always fetch products — no guard so stale/empty cache never blocks the name lookup
+    dispatch(fetchProducts());
   }, [ticketId]);
 
   useEffect(() => { if (agentTicketDetail) setSelectedStatus(agentTicketDetail.status); }, [agentTicketDetail]);
@@ -354,23 +357,6 @@ export const AgentTicketDetailPage: React.FC = () => {
     finally { setUnassigning(false); }
   };
 
-  const handleEnhance = async () => {
-    if (!commentText.trim()) { toast.error('Write something first before enhancing'); return; }
-    try {
-      setEnhancing(true);
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: `You are a support agent writing assistant. Take the following draft reply and improve it:\n- Fix grammar, spelling, and punctuation\n- Make the tone warm, empathetic, and professional\n- Keep the original meaning intact\n- Output ONLY the improved reply text, nothing else\n\nDraft reply:\n${commentText}` }] }),
-      });
-      const data = await response.json();
-      const improved = data?.content?.[0]?.text ?? '';
-      if (!improved) { toast.error('Enhancement failed — try again'); return; }
-      setCommentText(improved);
-      setTimeout(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`; }, 30);
-      toast.success('Reply enhanced ✨');
-    } catch { toast.error('Enhancement failed — try again'); } finally { setEnhancing(false); }
-  };
-
   if (isLoading) return <MainLayout navItems={agentNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
   if (!agentTicketDetail || error) {
     return (
@@ -384,8 +370,13 @@ export const AgentTicketDetailPage: React.FC = () => {
     );
   }
 
+
+
   const t = agentTicketDetail;
   const hasBreach = !!(t.sla_breached_at || t.response_sla_breached_at);
+  console.log('product_id:', t.product_id, typeof t.product_id);
+  console.log('products:', products);
+  console.log('productName:', productName);
   const bothBreached = !!(t.sla_breached_at && t.response_sla_breached_at);
   const slaBreachLabel = bothBreached ? 'Response & Resolution SLA Breached' : t.sla_breached_at ? 'Resolution SLA Breached' : 'Response SLA Breached';
 
@@ -505,7 +496,7 @@ export const AgentTicketDetailPage: React.FC = () => {
               </div>
 
               <div className="px-6 pb-3">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center mb-2">
                   <div className="flex items-center gap-1 p-0.5 bg-[#f4f5f7] rounded border border-[#dfe1e6]">
                     <button onClick={() => setIsInternal(false)} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors', !isInternal ? 'bg-white text-[#0052cc] border border-[#dfe1e6] shadow-sm' : 'text-[#6b778c] hover:text-[#172b4d]')}>Reply to customer</button>
                     <button onClick={() => setIsInternal(true)} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1', isInternal ? 'bg-[#fff7e6] text-[#ff991f] border border-[#ffe2a8]' : 'text-[#6b778c] hover:text-[#172b4d]')}>
@@ -513,12 +504,6 @@ export const AgentTicketDetailPage: React.FC = () => {
                       Internal note
                     </button>
                   </div>
-                  {!isInternal && commentText.trim().length > 0 && (
-                    <button onClick={handleEnhance} disabled={enhancing} className="h-7 px-3 rounded border border-[#dfe1e6] text-xs text-[#6b778c] hover:border-[#b3bac5] hover:text-[#172b4d] transition-colors flex items-center gap-1.5 disabled:opacity-50">
-                      {enhancing ? <div className="w-3 h-3 border border-[#6b778c] border-t-transparent rounded-full animate-spin" /> : <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>}
-                      {enhancing ? 'Enhancing…' : 'Enhance'}
-                    </button>
-                  )}
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#0052cc] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">{currentUserInitials}</div>
@@ -553,7 +538,7 @@ export const AgentTicketDetailPage: React.FC = () => {
               {merged.length > 0 && <div className="border-t border-[#ebecf0]" />}
               <div className="max-h-[400px] overflow-y-auto px-6">
                 {threadLoading ? (
-                  <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" /></div>
+                  <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-[#0052cc] border-t-transparent rounded-full animate-full animate-spin" /></div>
                 ) : merged.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <p className="text-[#8993a4] text-sm">No messages yet on this ticket.</p>

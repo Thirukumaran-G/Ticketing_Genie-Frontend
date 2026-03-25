@@ -44,12 +44,15 @@ const toNotif = (item: {
 const typeColor = (type: string | null) => {
   switch (type) {
     case 'ticket_created':           return 'bg-blue-500';
+    case 'ticket_raised':            return 'bg-blue-500';
     case 'ticket_assigned':          return 'bg-green-500';
+    case 'ticket_priority_updated':  return 'bg-purple-500';
     case 'ticket_pending':           return 'bg-yellow-500';
     case 'ticket_needs_assign':      return 'bg-orange-500';
     case 'critical_ticket_assigned': return 'bg-red-500';
     case 'sla_breach':               return 'bg-red-500';
     case 'sla_warning':              return 'bg-orange-400';
+    case 'sla_escalation_reminder':  return 'bg-red-600';
     case 'sla_breach_justification': return 'bg-purple-500';
     case 'internal_note':            return 'bg-amber-500';
     case 'agent_reply':              return 'bg-blue-400';
@@ -65,12 +68,15 @@ const typeColor = (type: string | null) => {
 const typeBorderLeft = (type: string | null) => {
   switch (type) {
     case 'ticket_created':           return 'border-l-blue-500';
+    case 'ticket_raised':            return 'border-l-blue-500';
     case 'ticket_assigned':          return 'border-l-green-500';
+    case 'ticket_priority_updated':  return 'border-l-purple-500';
     case 'ticket_pending':           return 'border-l-yellow-500';
     case 'ticket_needs_assign':      return 'border-l-orange-500';
     case 'critical_ticket_assigned': return 'border-l-red-500';
     case 'sla_breach':               return 'border-l-red-500';
     case 'sla_warning':              return 'border-l-orange-400';
+    case 'sla_escalation_reminder':  return 'border-l-red-600';
     case 'sla_breach_justification': return 'border-l-purple-500';
     case 'internal_note':            return 'border-l-amber-500';
     case 'agent_reply':              return 'border-l-blue-400';
@@ -86,12 +92,15 @@ const typeBorderLeft = (type: string | null) => {
 const typeLabel = (type: string | null) => {
   switch (type) {
     case 'ticket_created':           return 'Created';
+    case 'ticket_raised':            return 'Ticket Raised';
     case 'ticket_assigned':          return 'Assigned';
+    case 'ticket_priority_updated':  return 'Priority Updated';
     case 'ticket_pending':           return 'Pending';
     case 'ticket_needs_assign':      return 'Action Required';
     case 'critical_ticket_assigned': return 'Critical';
     case 'sla_breach':               return 'SLA Breach';
     case 'sla_warning':              return 'SLA Warning';
+    case 'sla_escalation_reminder':  return 'Escalation';
     case 'sla_breach_justification': return 'Breach Justification';
     case 'internal_note':            return 'Internal Note';
     case 'agent_reply':              return 'Agent Reply';
@@ -108,7 +117,6 @@ const typeLabel = (type: string | null) => {
 
 const DetailPanel: React.FC<{ notif: Notif; onClose: () => void }> = ({ notif, onClose }) => (
   <div className="flex flex-col h-full bg-white">
-    {/* Header */}
     <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
       <div className="flex items-center gap-2.5 min-w-0">
         <div className={clsx('w-2.5 h-2.5 rounded-full flex-shrink-0', typeColor(notif.type))} />
@@ -131,7 +139,6 @@ const DetailPanel: React.FC<{ notif: Notif; onClose: () => void }> = ({ notif, o
       </button>
     </div>
 
-    {/* Body */}
     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
       <h3 className="text-base font-semibold text-slate-900 leading-snug">
         {notif.title ?? '—'}
@@ -145,7 +152,6 @@ const DetailPanel: React.FC<{ notif: Notif; onClose: () => void }> = ({ notif, o
       )}
     </div>
 
-    {/* Footer */}
     <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0 space-y-2">
       <p className="text-xs text-slate-400">
         {format(new Date(notif.created_at), 'MMM d, yyyy · h:mm a')}
@@ -199,6 +205,7 @@ export const NotificationsPage: React.FC = () => {
   const tokenRef = useRef<string | null>(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
 
+  // FIX: fetchNotifs replaces entire list from DB — always reflects truth
   const fetchNotifs = useCallback(async () => {
     try {
       const data = await notificationsService.list();
@@ -243,7 +250,10 @@ export const NotificationsPage: React.FC = () => {
   useEffect(() => {
     fetchNotifs();
     fetchPref();
-    if (!token) return;
+
+    const pollTimer = setInterval(fetchNotifs, 10_000);
+
+    if (!token) return () => clearInterval(pollTimer);
 
     let es: EventSource;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -261,46 +271,69 @@ export const NotificationsPage: React.FC = () => {
           if (t) connect(t);
         }, 5_000);
       };
+
       es.addEventListener('notification', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          setNotifs((prev) => [{
-            id: data.id ?? String(Date.now()), type: data.type ?? null,
-            title: data.title ?? null, message: data.message ?? null,
-            is_read: false, is_internal: data.is_internal ?? false,
-            created_at: new Date().toISOString(), ticket_id: data.ticket_id ?? null,
-          }, ...prev]);
+          const newNotif: Notif = {
+            id:          data.id ?? String(Date.now()),
+            type:        data.type        ?? null,
+            title:       data.title       ?? null,
+            message:     data.message     ?? null,
+            is_read:     false,
+            is_internal: data.is_internal ?? false,
+            created_at:  new Date().toISOString(),
+            ticket_id:   data.ticket_id   ?? null,
+          };
+          setNotifs((prev) => {
+            // FIX: duplicate guard — if real id already exists skip the push
+            // (can happen if poll ran just before SSE fired)
+            if (data.id && prev.some((n) => n.id === data.id)) return prev;
+            return [newNotif, ...prev];
+          });
         } catch { /* bad payload */ }
       });
+
       es.addEventListener('read_receipt', (e: MessageEvent) => {
         try {
           const { id } = JSON.parse(e.data);
           setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
         } catch { /* bad payload */ }
       });
+
       es.addEventListener('internal_note', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          setNotifs((prev) => [{
-            id: data.id ?? String(Date.now()), type: 'internal_note',
-            title: data.title ?? 'Internal note', message: data.message ?? null,
-            is_read: false, is_internal: true,
-            created_at: new Date().toISOString(), ticket_id: data.ticket_id ?? null,
-          }, ...prev]);
+          const newNotif: Notif = {
+            id:          data.id ?? String(Date.now()),
+            type:        'internal_note',
+            title:       data.title   ?? 'Internal note',
+            message:     data.message ?? null,
+            is_read:     false,
+            is_internal: true,
+            created_at:  new Date().toISOString(),
+            ticket_id:   data.ticket_id ?? null,
+          };
+          setNotifs((prev) => {
+            if (data.id && prev.some((n) => n.id === data.id)) return prev;
+            return [newNotif, ...prev];
+          });
         } catch { /* bad payload */ }
       });
     };
 
     connect(token);
-    return () => { es?.close(); if (reconnectTimer) clearTimeout(reconnectTimer); };
-  }, [token]);
+    return () => {
+      es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearInterval(pollTimer);
+    };
+  }, [token, fetchNotifs]);
 
   const unreadCount = notifs.filter((n) => !n.is_read).length;
 
   return (
     <MainLayout navItems={nav} pageTitle="Notifications">
-
-      {/* Full-height two-column shell — always split */}
       <div className="flex h-[calc(100vh-64px)] overflow-hidden">
 
         {/* ── Left: list ──────────────────────────────────────────────────── */}
@@ -308,8 +341,6 @@ export const NotificationsPage: React.FC = () => {
           'flex flex-col bg-white border-r border-slate-200 overflow-hidden transition-all duration-200',
           selected ? 'w-[400px] flex-shrink-0' : 'flex-1',
         )}>
-
-          {/* Header — centered when no selection */}
           <div className="flex-shrink-0 border-b border-slate-100">
             <div className={clsx(
               'flex items-center justify-between px-6 py-4',
@@ -359,7 +390,6 @@ export const NotificationsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Scrollable list body — centered when no selection */}
           <div className="flex-1 overflow-y-auto">
             <div className={clsx(!selected && 'max-w-3xl mx-auto w-full py-6 px-6')}>
               {loading ? (
@@ -434,7 +464,7 @@ export const NotificationsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Right: detail panel — always visible ────────────────────────── */}
+        {/* ── Right: detail panel ─────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 overflow-hidden">
           {selected
             ? <DetailPanel notif={selected} onClose={() => setSelected(null)} />

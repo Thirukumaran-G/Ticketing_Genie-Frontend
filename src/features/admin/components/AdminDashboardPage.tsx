@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Cell, PieChart, Pie, Legend,
@@ -12,17 +12,14 @@ import { adminNav } from './adminNav';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Summary {
-  open_ticket_count:      number;   // actually "assigned" count — key kept for API compat
+  open_ticket_count:      number;
   total_sla_breaches:     number;
   avg_first_response_min: number;
   tickets_resolved_today: number;
 }
 interface PriorityRow { priority: string; count: number; }
-
-// Identical to BreachDayRaw — aliased locally for readability
 type BreachDay = BreachDayRaw;
 
-// Normalize raw API rows — backend may not yet return the split fields
 const normalizeBreachDay = (r: any): BreachDay => ({
   day:                   r.day,
   breach_count:          r.breach_count          ?? 0,
@@ -36,11 +33,15 @@ interface ProductRow  {
 }
 interface SeverityRow    { severity: string; count: number; }
 interface StatusRow      { status: string; count: number; }
-interface ResolutionTime { avg_resolution_time_min: number; min_resolution_time_min: number; max_resolution_time_min: number; }
-interface DayRow         { day: string; count: number; }
-interface CompanyRow     { company_id: string; total: number; name: string; }
+interface ResolutionTime {
+  avg_resolution_time_min: number;
+  min_resolution_time_min: number;
+  max_resolution_time_min: number;
+}
+interface DayRow    { day: string; count: number; }
+interface CompanyRow { company_id: string; total: number; name: string; }
 
-// ─── Valid ticket statuses (from VALID_TRANSITIONS) ───────────────────────────
+// ─── Valid ticket statuses ────────────────────────────────────────────────────
 const VALID_STATUSES = [
   'new', 'acknowledged', 'assigned', 'in_progress',
   'on_hold', 'resolved', 'closed', 'reopened',
@@ -58,9 +59,6 @@ const PRI_CFG: Record<string, { bar: string; badge: string; label: string }> = {
 const SEV_COLOR: Record<string, string> = {
   critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#3b82f6',
 };
-const PRI_COLOR: Record<string, string> = {
-  P0: '#ef4444', P1: '#f97316', P2: '#eab308', P3: '#3b82f6',
-};
 const STATUS_COLOR: Record<string, string> = {
   new: '#6366f1', acknowledged: '#8b5cf6', assigned: '#06b6d4',
   in_progress: '#3b82f6', on_hold: '#f59e0b',
@@ -68,9 +66,12 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const TT = {
-  contentStyle: { backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' },
-  labelStyle:   { color: '#64748b', fontSize: 11, fontWeight: 600 },
-  itemStyle:    { color: '#1e293b', fontSize: 12 },
+  contentStyle: {
+    backgroundColor: '#fff', border: '1px solid #e2e8f0',
+    borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+  },
+  labelStyle: { color: '#64748b', fontSize: 11, fontWeight: 600 },
+  itemStyle:  { color: '#1e293b', fontSize: 12 },
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -88,69 +89,6 @@ const StatCard: React.FC<{
     {sub && <p className="text-xs text-slate-400">{sub}</p>}
   </div>
 );
-
-/** Dual-line sparkline: response breaches (orange dashed) + resolve breaches (red solid) */
-const DualBreachSparkline: React.FC<{ data: BreachDay[] }> = ({ data }) => {
-  if (!data.length) return <p className="text-xs text-slate-400 py-6 text-center">No breach data</p>;
-  const W = 400, H = 80, PAD = 8;
-  const maxVal = Math.max(...data.map(d => Math.max(d.response_breach_count, d.resolve_breach_count)), 1);
-
-  const toPoints = (key: 'response_breach_count' | 'resolve_breach_count') =>
-    data.map((d, i) => {
-      const x = PAD + (i / Math.max(data.length - 1, 1)) * (W - PAD * 2);
-      const y = H - PAD - (d[key] / maxVal) * (H - PAD * 2);
-      return `${x},${y}`;
-    });
-
-  const responsePts = toPoints('response_breach_count');
-  const resolvePts  = toPoints('resolve_breach_count');
-
-  const areaPath = (pts: string[]) => {
-    const last = pts[pts.length - 1].split(',').map(Number);
-    return `${PAD},${H - PAD} ${pts.join(' ')} ${last[0]},${H - PAD}`;
-  };
-
-  return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="response-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f97316" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="resolve-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polygon points={areaPath(responsePts)} fill="url(#response-fill)" />
-        <polyline points={responsePts.join(' ')} fill="none" stroke="#f97316" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="4 2" />
-        <polygon points={areaPath(resolvePts)} fill="url(#resolve-fill)" />
-        <polyline points={resolvePts.join(' ')} fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {data.map((d, i) => {
-          const [rx, ry] = responsePts[i].split(',').map(Number);
-          const [sx, sy] = resolvePts[i].split(',').map(Number);
-          return (
-            <g key={i}>
-              {d.response_breach_count > 0 && <circle cx={rx} cy={ry} r="3" fill="#f97316" />}
-              {d.resolve_breach_count  > 0 && <circle cx={sx} cy={sy} r="3" fill="#ef4444" />}
-            </g>
-          );
-        })}
-      </svg>
-      <div className="flex items-center gap-4 mt-2">
-        <div className="flex items-center gap-1.5">
-          <svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#f97316" strokeWidth="2" strokeDasharray="4 2"/></svg>
-          <span className="text-[10px] text-slate-500 font-medium">Response SLA</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#ef4444" strokeWidth="2"/></svg>
-          <span className="text-[10px] text-slate-500 font-medium">Resolve SLA</span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const Section: React.FC<{ title: string; sub: string; children: React.ReactNode }> = ({ title, sub, children }) => (
   <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
@@ -172,29 +110,26 @@ const Stat: React.FC<{ label: string; value: string | number; accent?: string }>
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export const AdminDashboardPage: React.FC = () => {
-  const reportRef  = useRef<HTMLDivElement>(null);
-  const [loading,      setLoading]      = useState(true);
-  const [downloading,  setDownloading]  = useState(false);
+  const [loading,     setLoading]     = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
-  const [summary,       setSummary]       = useState<Summary | null>(null);
-  const [byPriority,    setByPriority]    = useState<PriorityRow[]>([]);
-  const [breachDays,    setBreachDays]    = useState<BreachDay[]>([]);
-  const [byProduct,     setByProduct]     = useState<ProductRow[]>([]);
-  const [bySeverity,    setBySeverity]    = useState<SeverityRow[]>([]);
-  const [byStatus,      setByStatus]      = useState<StatusRow[]>([]);
-  const [resolution,    setResolution]    = useState<ResolutionTime | null>(null);
-  const [byDay,         setByDay]         = useState<DayRow[]>([]);
-  const [breachDays30,  setBreachDays30]  = useState<BreachDay[]>([]);
-  const [byProductFull, setByProductFull] = useState<ProductRow[]>([]);
-  const [topCompanies,  setTopCompanies]  = useState<CompanyRow[]>([]);
+  const [summary,      setSummary]      = useState<Summary | null>(null);
+  const [byPriority,   setByPriority]   = useState<PriorityRow[]>([]);
+  const [breachDays30, setBreachDays30] = useState<BreachDay[]>([]);
+  const [byProduct,    setByProduct]    = useState<ProductRow[]>([]);
+  const [bySeverity,   setBySeverity]   = useState<SeverityRow[]>([]);
+  const [byStatus,     setByStatus]     = useState<StatusRow[]>([]);
+  const [resolution,   setResolution]   = useState<ResolutionTime | null>(null);
+  const [byDay,        setByDay]        = useState<DayRow[]>([]);
+  const [topCompanies, setTopCompanies] = useState<CompanyRow[]>([]);
 
   const load = async () => {
     setLoading(true);
     try {
       const [
-        s, p, d, prod, authProducts,
+        s, p, breach, prod, authProducts,
         sev, status, res, days,
-        pri, breach, prodFull, companies, authCompanies,
+        companies, authCompanies,
       ] = await Promise.all([
         adminTicketService.reportDashboardSummary(),
         adminTicketService.reportOpenByPriority(),
@@ -205,9 +140,6 @@ export const AdminDashboardPage: React.FC = () => {
         adminTicketService.reportTicketsByStatus(),
         adminTicketService.reportAvgResolutionTime(),
         adminTicketService.reportTicketsByDay(),
-        adminTicketService.reportOpenByPriority(),
-        adminTicketService.reportSLABreachesByDay(),
-        adminTicketService.reportTicketsByProduct(),
         adminTicketService.reportTopCompanies(),
         adminAuthService.listCompanies(),
       ]);
@@ -215,39 +147,38 @@ export const AdminDashboardPage: React.FC = () => {
       setSummary(s);
       setByPriority(p.open_tickets_by_priority);
 
-      // normalizeBreachDay guards against old backend shape (missing split fields)
-      setBreachDays(d.sla_breaches_by_day.slice(-14).map(normalizeBreachDay));
+      // 30-day breach series — single fetch, no duplicate
+      setBreachDays30(breach.sla_breaches_by_day.slice(-30).map(normalizeBreachDay));
 
-      const nameMap: Record<string, string> = {};
-      authProducts.forEach((ap: { id: string; name: string }) => { nameMap[ap.id] = ap.name; });
+      const productNameMap: Record<string, string> = {};
+      authProducts.forEach((ap: { id: string; name: string }) => {
+        productNameMap[ap.id] = ap.name;
+      });
 
+      // Full product list with resolved names — single fetch
       setByProduct(
-        prod.tickets_by_product
-          .map((r: ProductRow) => ({ ...r, product_name: nameMap[r.product_id] ?? r.product_name }))
-          .slice(0, 5),
+        prod.tickets_by_product.map((r: ProductRow) => ({
+          ...r,
+          product_name: productNameMap[r.product_id] ?? r.product_name,
+        })),
       );
 
       setBySeverity(sev.tickets_by_severity);
       setByStatus(
-        (status.tickets_by_status as StatusRow[]).filter(r => VALID_STATUSES.includes(r.status))
+        (status.tickets_by_status as StatusRow[]).filter(r =>
+          VALID_STATUSES.includes(r.status)
+        ),
       );
       setResolution(res);
       setByDay(days.tickets_by_day);
 
-      // same normalizer for the 30-day series
-      setBreachDays30(breach.sla_breaches_by_day.slice(-30).map(normalizeBreachDay));
+      const companyNameMap: Record<string, string> = {};
+      authCompanies.forEach((c: any) => { companyNameMap[c.id] = c.name; });
 
-      const companyMap: Record<string, string> = {};
-      authCompanies.forEach((c: any) => { companyMap[c.id] = c.name; });
-
-      setByProductFull(
-        prodFull.tickets_by_product.map((r: any) => ({
-          ...r, product_name: nameMap[r.product_id] ?? r.product_name,
-        })),
-      );
       setTopCompanies(
         companies.top_companies.map((r: any) => ({
-          ...r, name: companyMap[r.company_id] ?? r.company_id.slice(0, 8) + '…',
+          ...r,
+          name: companyNameMap[r.company_id] ?? r.company_id.slice(0, 8) + '…',
         })),
       );
     } finally {
@@ -256,6 +187,15 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Total tickets derived from byStatus sum — no extra API call needed
+  const totalTickets = byStatus.reduce((sum, r) => sum + r.count, 0);
+
+  const maxPriCount = Math.max(...byPriority.map(r => r.count), 1);
+
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
 
   const downloadPDF = async () => {
     setDownloading(true);
@@ -277,13 +217,9 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  const maxPriCount     = Math.max(...byPriority.map(r => r.count), 1);
-  const maxProductTotal = Math.max(...byProduct.map(r => r.total), 1);
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-
   return (
     <MainLayout navItems={adminNav} pageTitle="Dashboard">
-      <div id="report-content" ref={reportRef} className="p-6 space-y-8 max-w-7xl mx-auto">
+      <div id="report-content" className="p-6 space-y-8 max-w-7xl mx-auto">
 
         {/* ── Header ── */}
         <div className="flex items-end justify-between no-print">
@@ -320,23 +256,49 @@ export const AdminDashboardPage: React.FC = () => {
           <div className="flex justify-center py-24"><Spinner size="lg" /></div>
         ) : (
           <>
-            {/* ══ SECTION 1: Summary Stats ══ */}
+            {/* ══ SECTION 1: Summary Stats — now includes Total Tickets ══ */}
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Overview</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="📋" label="Assigned Tickets"   value={summary?.open_ticket_count ?? '—'}                    sub="Status: assigned" />
-                <StatCard icon="✅" label="Resolved Today"     value={summary?.tickets_resolved_today ?? '—'}               accent="text-emerald-600" sub="UTC day" />
-                <StatCard icon="⏱" label="Avg First Response" value={summary ? `${summary.avg_first_response_min}m` : '—'} sub="All time average" />
-                <StatCard icon="🚨" label="Total SLA Breaches" value={summary?.total_sla_breaches ?? '—'}                   accent="text-red-500" sub="All time" />
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <StatCard
+                  icon="🎫" label="Total Tickets"
+                  value={totalTickets}
+                  sub="All statuses"
+                />
+                <StatCard
+                  icon="📋" label="Assigned Tickets"
+                  value={summary?.open_ticket_count ?? '—'}
+                  sub="Status: assigned"
+                />
+                <StatCard
+                  icon="✅" label="Resolved Today"
+                  value={summary?.tickets_resolved_today ?? '—'}
+                  accent="text-emerald-600"
+                  sub="UTC day"
+                />
+                <StatCard
+                  icon="⏱" label="Avg First Response"
+                  value={summary ? `${summary.avg_first_response_min}m` : '—'}
+                  sub="All time average"
+                />
+                <StatCard
+                  icon="🚨" label="Total SLA Breaches"
+                  value={summary?.total_sla_breaches ?? '—'}
+                  accent="text-red-500"
+                  sub="All time"
+                />
               </div>
             </div>
 
-            {/* ══ SECTION 2: Assigned by Priority & Product ══ */}
+            {/* ══ SECTION 2: Assigned by Priority (single, no duplicate) ══ */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
+              {/* Priority breakdown — kept as the detailed labelled bar card */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">Assigned by Priority</h3>
+                  <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">
+                    Assigned by Priority
+                  </h3>
                   <span className="text-xs text-slate-400 tabular-nums">
                     {byPriority.reduce((s, r) => s + r.count, 0)} total
                   </span>
@@ -351,15 +313,22 @@ export const AdminDashboardPage: React.FC = () => {
                       const cfg   = PRI_CFG[p];
                       return (
                         <div key={p} className="flex items-center gap-3">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ring-1 ${cfg.badge}`}>{p}</span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ring-1 ${cfg.badge}`}>
+                            {p}
+                          </span>
                           <span className="text-xs text-slate-400 w-12">{cfg.label}</span>
                           <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all duration-500 ${cfg.bar}`}
-                              style={{ width: `${(count / maxPriCount) * 100}%`, minWidth: count > 0 ? '1.5rem' : 0 }}
+                              style={{
+                                width: `${(count / maxPriCount) * 100}%`,
+                                minWidth: count > 0 ? '1.5rem' : 0,
+                              }}
                             />
                           </div>
-                          <span className="w-7 text-xs font-semibold text-slate-700 text-right tabular-nums">{count}</span>
+                          <span className="w-7 text-xs font-semibold text-slate-700 text-right tabular-nums">
+                            {count}
+                          </span>
                         </div>
                       );
                     })}
@@ -367,89 +336,50 @@ export const AdminDashboardPage: React.FC = () => {
                 )}
               </div>
 
+              {/* Tickets by Severity */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">Tickets by Product</h3>
-                  <span className="text-xs text-slate-400">Top 5</span>
-                </div>
-                {byProduct.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-6 text-center">No data</p>
-                ) : (
-                  <div className="space-y-3">
-                    {byProduct.map(row => {
-                      const resolvedPct = row.total > 0 ? Math.round((row.resolved / row.total) * 100) : 0;
-                      return (
-                        <div key={row.product_id}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-slate-700 truncate max-w-[140px]">{row.product_name}</span>
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className="text-emerald-600 font-medium">{resolvedPct}% resolved</span>
-                              <span className="tabular-nums font-semibold text-slate-700">{row.total}</span>
-                            </div>
-                          </div>
-                          <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-blue-400 transition-all duration-500"
-                              style={{ width: `${(row.total / maxProductTotal) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest mb-0.5">
+                  Tickets by Severity
+                </h3>
+                <p className="text-xs text-slate-400 mb-5">Distribution across severity levels</p>
+                {bySeverity.length === 0 ? <Empty /> : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={bySeverity} barSize={44}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="severity"
+                        tick={{ fill: '#94a3b8', fontSize: 12 }}
+                        axisLine={false} tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: '#94a3b8', fontSize: 12 }}
+                        axisLine={false} tickLine={false}
+                        allowDecimals={false}
+                      />
+                      <Tooltip {...TT} />
+                      <Bar dataKey="count" radius={[6,6,0,0]} name="Tickets">
+                        {bySeverity.map(r => (
+                          <Cell key={r.severity} fill={SEV_COLOR[r.severity] ?? '#94a3b8'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 )}
               </div>
             </div>
 
-            {/* ══ SECTION 3: Dual SLA Breach Sparkline (14-day) ══ */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-widest">SLA Breach Trend</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Last 14 days — response vs resolve</p>
-                </div>
-                {breachDays.length > 0 && (
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs font-semibold text-orange-500 tabular-nums">
-                      {breachDays.reduce((s, d) => s + d.response_breach_count, 0)} response
-                    </span>
-                    <span className="text-xs font-semibold text-red-500 tabular-nums">
-                      {breachDays.reduce((s, d) => s + d.resolve_breach_count, 0)} resolve
-                    </span>
-                  </div>
-                )}
-              </div>
-              <DualBreachSparkline data={breachDays} />
-              {breachDays.length > 0 && (
-                <div className="flex justify-between mt-1 text-[10px] text-slate-400">
-                  <span>{breachDays[0]?.day}</span>
-                  <span>{breachDays[breachDays.length - 1]?.day}</span>
-                </div>
-              )}
-            </div>
-
-            {/* ══ SECTION 4: Detailed Reports ══ */}
+            {/* ══ SECTION 3: Detailed Reports ══ */}
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Detailed Reports</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                Detailed Reports
+              </p>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
-                <Section title="Tickets by Severity" sub="Distribution of all tickets across severity levels">
-                  {bySeverity.length === 0 ? <Empty /> : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={bySeverity} barSize={48}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="severity" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip {...TT} />
-                        <Bar dataKey="count" radius={[6,6,0,0]} name="Tickets">
-                          {bySeverity.map(r => <Cell key={r.severity} fill={SEV_COLOR[r.severity] ?? '#94a3b8'} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </Section>
-
-                <Section title="Tickets by Status" sub="Current ticket distribution across valid workflow statuses">
+                {/* Tickets by Status */}
+                <Section
+                  title="Tickets by Status"
+                  sub="Current distribution across all workflow statuses"
+                >
                   {byStatus.length === 0 ? <Empty /> : (
                     <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
@@ -457,20 +387,31 @@ export const AdminDashboardPage: React.FC = () => {
                           data={byStatus} dataKey="count" nameKey="status"
                           cx="50%" cy="50%" outerRadius={80}
                           label={({ name, percent }: { name?: string; percent?: number }) =>
-                            percent && percent > 0.03 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : ''
+                            percent && percent > 0.03
+                              ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`
+                              : ''
                           }
                           labelLine={false}
                         >
-                          {byStatus.map(r => <Cell key={r.status} fill={STATUS_COLOR[r.status] ?? '#94a3b8'} />)}
+                          {byStatus.map(r => (
+                            <Cell key={r.status} fill={STATUS_COLOR[r.status] ?? '#94a3b8'} />
+                          ))}
                         </Pie>
                         <Tooltip {...TT} />
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
+                        <Legend
+                          iconType="circle" iconSize={8}
+                          wrapperStyle={{ fontSize: 11, color: '#64748b' }}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   )}
                 </Section>
 
-                <Section title="Resolution Time" sub="How long tickets take to resolve (minutes)">
+                {/* Resolution Time */}
+                <Section
+                  title="Resolution Time"
+                  sub="How long tickets take to resolve (minutes)"
+                >
                   {!resolution ? <Empty /> : (
                     <div className="grid grid-cols-3 gap-4">
                       <Stat label="Average (min)" value={resolution.avg_resolution_time_min} />
@@ -480,18 +421,28 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                 </Section>
 
+                {/* Ticket Creation Trend — full width */}
                 <div className="xl:col-span-2">
-                  <Section title="Ticket Creation Trend" sub="Number of tickets created per day over the last 30 days">
+                  <Section
+                    title="Ticket Creation Trend"
+                    sub="Number of tickets created per day over the last 30 days"
+                  >
                     {byDay.length === 0 ? <Empty /> : (
                       <ResponsiveContainer width="100%" height={220}>
                         <LineChart data={byDay}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                           <XAxis
-                            dataKey="day" tick={{ fill: '#94a3b8', fontSize: 11 }}
+                            dataKey="day"
+                            tick={{ fill: '#94a3b8', fontSize: 11 }}
                             axisLine={false} tickLine={false}
-                            tickFormatter={d => d.slice(5)} interval="preserveStartEnd"
+                            tickFormatter={d => d.slice(5)}
+                            interval="preserveStartEnd"
                           />
-                          <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                          <YAxis
+                            tick={{ fill: '#94a3b8', fontSize: 12 }}
+                            axisLine={false} tickLine={false}
+                            allowDecimals={false}
+                          />
                           <Tooltip {...TT} />
                           <Line
                             type="monotone" dataKey="count" name="Tickets Created"
@@ -504,96 +455,138 @@ export const AdminDashboardPage: React.FC = () => {
                   </Section>
                 </div>
 
-                <Section title="Assigned Tickets by Priority" sub="Currently assigned tickets broken down by priority level">
-                  {byPriority.length === 0 ? <Empty /> : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={byPriority} barSize={48}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="priority" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip {...TT} />
-                        <Bar dataKey="count" name="Assigned Tickets" radius={[6,6,0,0]}>
-                          {byPriority.map(r => <Cell key={r.priority} fill={PRI_COLOR[r.priority] ?? '#94a3b8'} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </Section>
+                {/* SLA Breach Trend 30-day — full width, single chart */}
+                <div className="xl:col-span-2">
+                  <Section
+                    title="SLA Breach Trend — Last 30 Days"
+                    sub="Response SLA (dashed orange) vs Resolve SLA (solid red) breaches per day"
+                  >
+                    {breachDays30.length === 0 ? <Empty /> : (
+                      <>
+                        <div className="flex items-center gap-6 mb-4">
+                          <span className="text-xs font-semibold text-orange-500 tabular-nums">
+                            {breachDays30.reduce((s, d) => s + d.response_breach_count, 0)} response breaches
+                          </span>
+                          <span className="text-xs font-semibold text-red-500 tabular-nums">
+                            {breachDays30.reduce((s, d) => s + d.resolve_breach_count, 0)} resolve breaches
+                          </span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={220}>
+                          <LineChart data={breachDays30}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                            <XAxis
+                              dataKey="day"
+                              tick={{ fill: '#94a3b8', fontSize: 11 }}
+                              axisLine={false} tickLine={false}
+                              tickFormatter={d => d.slice(5)}
+                              interval="preserveStartEnd"
+                            />
+                            <YAxis
+                              tick={{ fill: '#94a3b8', fontSize: 12 }}
+                              axisLine={false} tickLine={false}
+                              allowDecimals={false}
+                            />
+                            <Tooltip {...TT} />
+                            <Legend
+                              iconType="circle" iconSize={8}
+                              wrapperStyle={{ fontSize: 11, color: '#64748b' }}
+                            />
+                            <Line
+                              type="monotone" dataKey="response_breach_count" name="Response SLA"
+                              stroke="#f97316" strokeWidth={2} strokeDasharray="5 3" dot={false}
+                              activeDot={{ r: 5, fill: '#f97316' }}
+                            />
+                            <Line
+                              type="monotone" dataKey="resolve_breach_count" name="Resolve SLA"
+                              stroke="#ef4444" strokeWidth={2.5} dot={false}
+                              activeDot={{ r: 5, fill: '#ef4444' }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </>
+                    )}
+                  </Section>
+                </div>
 
-                <Section title="SLA Breach Trend (30 days)" sub="Response SLA (dashed orange) vs Resolve SLA (solid red) breaches">
-                  {breachDays30.length === 0 ? <Empty /> : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={breachDays30}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis
-                          dataKey="day" tick={{ fill: '#94a3b8', fontSize: 11 }}
-                          axisLine={false} tickLine={false}
-                          tickFormatter={d => d.slice(5)} interval="preserveStartEnd"
-                        />
-                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip {...TT} />
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
-                        <Line
-                          type="monotone" dataKey="response_breach_count" name="Response SLA"
-                          stroke="#f97316" strokeWidth={2} strokeDasharray="5 3" dot={false}
-                          activeDot={{ r: 5, fill: '#f97316' }}
-                        />
-                        <Line
-                          type="monotone" dataKey="resolve_breach_count" name="Resolve SLA"
-                          stroke="#ef4444" strokeWidth={2.5} dot={false}
-                          activeDot={{ r: 5, fill: '#ef4444' }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </Section>
+                {/* Tickets by Product — full horizontal bar, single instance */}
+                <div className="xl:col-span-2">
+                  <Section
+                    title="Tickets by Product"
+                    sub="Total vs resolved ticket volume per product"
+                  >
+                    {byProduct.length === 0 ? <Empty /> : (
+                      <ResponsiveContainer
+                        width="100%"
+                        height={Math.max(220, byProduct.length * 50)}
+                      >
+                        <BarChart data={byProduct} layout="vertical" barSize={12}>
+                          <CartesianGrid
+                            strokeDasharray="3 3" stroke="#f1f5f9"
+                            horizontal={false}
+                          />
+                          <XAxis
+                            type="number"
+                            tick={{ fill: '#94a3b8', fontSize: 11 }}
+                            axisLine={false} tickLine={false}
+                            allowDecimals={false}
+                          />
+                          <YAxis
+                            type="category" dataKey="product_name" width={120}
+                            tick={{ fill: '#64748b', fontSize: 11 }}
+                            axisLine={false} tickLine={false}
+                          />
+                          <Tooltip {...TT} />
+                          <Legend
+                            iconType="circle" iconSize={8}
+                            wrapperStyle={{ fontSize: 11, color: '#64748b' }}
+                          />
+                          <Bar dataKey="total"    name="Total"    fill="#3b82f6" radius={[0,4,4,0]} />
+                          <Bar dataKey="resolved" name="Resolved" fill="#22c55e" radius={[0,4,4,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Section>
+                </div>
 
-                <Section title="Tickets by Product" sub="Total vs resolved ticket volume per product">
-                  {byProductFull.length === 0 ? <Empty /> : (
-                    <ResponsiveContainer width="100%" height={Math.max(220, byProductFull.length * 50)}>
-                      <BarChart data={byProductFull} layout="vertical" barSize={12}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                        <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <YAxis
-                          type="category" dataKey="product_name" width={110}
-                          tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false}
-                        />
-                        <Tooltip {...TT} />
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
-                        <Bar dataKey="total"    name="Total"    fill="#3b82f6" radius={[0,4,4,0]} />
-                        <Bar dataKey="resolved" name="Resolved" fill="#22c55e" radius={[0,4,4,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </Section>
-
-                <Section title="Top Companies by Ticket Volume" sub="Companies generating the most support tickets">
-                  {topCompanies.length === 0 ? <Empty /> : (
-                    <div className="space-y-3">
-                      {topCompanies.map((c, idx) => {
-                        const max = topCompanies[0]?.total ?? 1;
-                        const pct = (c.total / max) * 100;
-                        return (
-                          <div key={c.company_id}>
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-400 w-5 tabular-nums">#{idx + 1}</span>
-                                <span className="text-xs font-semibold text-slate-700 truncate max-w-[180px]">{c.name}</span>
+                {/* Top Companies by Ticket Volume */}
+                <div className="xl:col-span-2">
+                  <Section
+                    title="Top Companies by Ticket Volume"
+                    sub="Companies generating the most support tickets"
+                  >
+                    {topCompanies.length === 0 ? <Empty /> : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-3">
+                        {topCompanies.map((c, idx) => {
+                          const max = topCompanies[0]?.total ?? 1;
+                          const pct = (c.total / max) * 100;
+                          return (
+                            <div key={c.company_id}>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-slate-400 w-5 tabular-nums">
+                                    #{idx + 1}
+                                  </span>
+                                  <span className="text-xs font-semibold text-slate-700 truncate max-w-[200px]">
+                                    {c.name}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-bold tabular-nums text-slate-700">
+                                  {c.total}
+                                </span>
                               </div>
-                              <span className="text-xs font-bold tabular-nums text-slate-700">{c.total}</span>
+                              <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-indigo-400 transition-all duration-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-indigo-400 transition-all duration-500"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Section>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Section>
+                </div>
 
               </div>
             </div>

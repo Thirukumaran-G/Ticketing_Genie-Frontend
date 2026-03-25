@@ -32,8 +32,6 @@ export const authService = {
   logout: () =>
     authClient.post('/logout', {}).then((r) => r.data),
 
-  // accessToken param — pass it explicitly right after login/refresh
-  // before Redux state has been updated, so the interceptor hasn't picked it up yet
   me: (accessToken?: string) =>
     authClient
       .get<User>('/me', {

@@ -133,6 +133,40 @@ function fileIcon(file: File): string {
   return '📎';
 }
 
+// ── ImagePreviewModal ─────────────────────────────────────────────────────────
+// NEW: opens when user clicks an image thumbnail in the pending files list
+
+const ImagePreviewModal: React.FC<{ src: string; name: string; onClose: () => void }> = ({ src, name, onClose }) => {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
+      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 w-7 h-7 rounded-full bg-white flex items-center justify-center shadow text-[#172B4D] hover:bg-[#f4f5f7] z-10"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <img
+          src={src}
+          alt={name}
+          className="max-w-[90vw] max-h-[90vh] rounded shadow-lg object-contain"
+        />
+        <p className="absolute bottom-0 left-0 right-0 text-center text-xs text-white/70 bg-black/40 py-1 rounded-b truncate px-3">
+          {name}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const RaiseTicketPage: React.FC = () => {
@@ -144,6 +178,8 @@ export const RaiseTicketPage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [draftBanner, setDraftBanner] = useState<DraftData | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  // NEW: track which image is being previewed
+  const [previewFile, setPreviewFile] = useState<PendingFile | null>(null);
 
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -272,6 +308,15 @@ export const RaiseTicketPage: React.FC = () => {
 
   return (
     <MainLayout navItems={customerNav} pageTitle="Create issue">
+      {/* NEW: image preview modal */}
+      {previewFile?.preview && (
+        <ImagePreviewModal
+          src={previewFile.preview}
+          name={previewFile.file.name}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
+
       <div className="min-h-screen bg-[#F4F5F7]">
 
         {/* ── Draft Recovery Banner ── */}
@@ -485,12 +530,27 @@ export const RaiseTicketPage: React.FC = () => {
                           key={pf.id}
                           className="group flex items-center gap-2.5 rounded border border-[#DFE1E6] bg-[#F4F5F7] px-3 py-2"
                         >
-                          {pf.preview
-                            ? <img src={pf.preview} alt="" className="w-7 h-7 rounded object-cover border border-[#DFE1E6] flex-shrink-0" />
-                            : <span className="text-base w-7 h-7 flex items-center justify-center flex-shrink-0">{fileIcon(pf.file)}</span>
-                          }
+                          {/* NEW: image thumbnail is now clickable to open preview */}
+                          {pf.preview ? (
+                            <img
+                              src={pf.preview}
+                              alt=""
+                              onClick={() => setPreviewFile(pf)}
+                              className="w-7 h-7 rounded object-cover border border-[#DFE1E6] flex-shrink-0 cursor-zoom-in hover:opacity-80 transition-opacity"
+                            />
+                          ) : (
+                            <span className="text-base w-7 h-7 flex items-center justify-center flex-shrink-0">{fileIcon(pf.file)}</span>
+                          )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[#172B4D] truncate">{pf.file.name}</p>
+                            <p
+                              className={clsx(
+                                'text-sm font-medium text-[#172B4D] truncate',
+                                pf.preview && 'cursor-zoom-in hover:text-[#0052CC] transition-colors',
+                              )}
+                              onClick={() => pf.preview && setPreviewFile(pf)}
+                            >
+                              {pf.file.name}
+                            </p>
                             <p className="text-xs text-[#6B778C]">{formatSize(pf.file.size)}</p>
                           </div>
                           <button

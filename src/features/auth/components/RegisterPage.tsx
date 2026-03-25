@@ -125,7 +125,7 @@ export const RegisterPage: React.FC = () => {
         </div>
 
         <Input
-          label="Phone number (optional)"
+          label="Phone number"
           type="tel"
           placeholder="9876543210"
           autoComplete="tel"

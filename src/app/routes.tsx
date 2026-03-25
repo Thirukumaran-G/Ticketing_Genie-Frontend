@@ -5,7 +5,6 @@ import { useAppSelector } from './store';
 import { Spinner } from '../components/ui';
 import { ROLES, ROLE_HOME } from '../config/constants';
 import { TemplatesPage } from '../features/settings/components/TemplatesPage';
-import { TLTicketGroupsPage } from '../features/tickets/components/teamlead/TLTicketGroupsPage';
 
 
 
@@ -121,7 +120,6 @@ export const AppRouter: React.FC = () => (
         <Route path="/settings" element={<ProtectedRoute><SettingsPageWrapper /></ProtectedRoute>} />
 
         <Route path="/settings/templates" element={<TemplatesPage />} />
-        <Route path="/tickets/groups"     element={<TLTicketGroupsPage />} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

@@ -61,8 +61,8 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, unreadCount, onClose }) => 
   const navigate         = useNavigate();
   const { user, logout } = useAuth();
 
-  const displayName    = user?.name || (user?.email ? user.email.split('@')[0] : 'User');
-  const avatarInitial  = displayName.charAt(0).toUpperCase();
+  const displayName   = user?.name || (user?.email ? user.email.split('@')[0] : 'User');
+  const avatarInitial = displayName.charAt(0).toUpperCase();
 
   const handleLogout = async () => {
     await logout();
@@ -142,11 +142,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, navItems, page
   const [unreadCount, setUnreadCount] = useState(0);
   const { accessToken }               = useAppSelector((s) => s.auth);
 
-  const sseRef        = useRef<EventSource | null>(null);
-  const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const reconnectRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Keep a ref to the latest token so the onerror closure always uses the fresh one
-  const tokenRef      = useRef<string | null>(accessToken);
+  const sseRef       = useRef<EventSource | null>(null);
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tokenRef     = useRef<string | null>(accessToken);
 
   useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
 
@@ -158,7 +157,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, navItems, page
   }, []);
 
   const connectSSE = useCallback((token: string) => {
-    // Close any existing connection first
     sseRef.current?.close();
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
 
@@ -169,46 +167,48 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, navItems, page
     es.addEventListener('notification', () => {
       setUnreadCount((prev) => prev + 1);
     });
-
+    
     es.addEventListener('read_receipt', () => {
       setUnreadCount((prev) => Math.max(0, prev - 1));
     });
 
     es.onerror = () => {
       es.close();
-      // Always reconnect with the LATEST token from the ref, not the stale closure value.
-      // This handles token refresh — if axios refreshed the token while SSE was connected,
-      // tokenRef.current will have the new one.
       reconnectRef.current = setTimeout(() => {
         const latestToken = tokenRef.current;
         if (latestToken) connectSSE(latestToken);
       }, 5_000);
     };
-  }, []); // no deps — uses tokenRef for fresh token on reconnect
+  }, []);
 
   useEffect(() => {
     fetchCount();
     pollRef.current = setInterval(fetchCount, 60_000);
-
     if (accessToken) connectSSE(accessToken);
 
     return () => {
       sseRef.current?.close();
-      if (pollRef.current)   clearInterval(pollRef.current);
+      if (pollRef.current)    clearInterval(pollRef.current);
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
     };
-  }, []); // run once on mount
+  }, []);
 
-  // When token changes (after silent refresh), reconnect SSE with new token immediately
   useEffect(() => {
-    if (!accessToken) return;
-    connectSSE(accessToken);
+    if (accessToken) connectSSE(accessToken);
   }, [accessToken, connectSSE]);
 
+  // FIX: removed setUnreadCount(0) on navigation to /notifications
+  // The count must reflect actual unread items from DB — not be zeroed on page visit.
+  // NotificationsPage calls markRead/markAllRead which trigger read_receipt SSE events
+  // that decrement the count correctly one by one.
+  // Instead, re-fetch the real count from DB when user visits notifications page
+  // so the badge always reflects truth.
   const location = useLocation();
   useEffect(() => {
-    if (location.pathname === '/notifications') setUnreadCount(0);
-  }, [location.pathname]);
+    if (location.pathname === '/notifications') {
+      fetchCount();
+    }
+  }, [location.pathname, fetchCount]);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -237,7 +237,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, navItems, page
             <Link
               to="/notifications"
               className="relative p-2 text-slate-500 hover:text-slate-800 transition-colors"
-              onClick={() => setUnreadCount(0)}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

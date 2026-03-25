@@ -10,11 +10,9 @@ import { StatusBadge, SeverityDot, PriorityLabel, SLABreachPill } from '../share
 import { AgentSLAPanel, BreachJustification } from '../shared/SLAPanel';
 import { ApologyModal } from './ApologyModal';
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
-import { fetchTLTicket, manualAssignThunk, fetchTeamOverview } from '../../slices/ticketsSlice';
+import { fetchTLTicket, manualAssignThunk, fetchTeamOverview, fetchProducts } from '../../slices/ticketsSlice';
 import { ticketsService } from '../../services/ticketsService';
 import { tlNav } from './teamleadNav';
-import { TICKET_STATUSES } from '../../../../config';
-import { SimilarTicketsPanel } from './SimilarTicketsPanel';
 
 interface ConversationItem {
   id: string; author_id: string; author_type: 'customer' | 'agent' | 'team_lead';
@@ -44,8 +42,35 @@ function fileIcon(mime: string | null) {
   if (mime.includes('word') || mime.includes('document')) return '📝';
   return '📄';
 }
-const INFO_STATUSES = TICKET_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g,' ').replace(/\b\w/g,(c)=>c.toUpperCase()) }));
+
+// ✅ TL can only close tickets — not change to any other status
+const TL_STATUSES = [
+  { value: 'closed', label: 'Closed' },
+];
+
 function getInitials(name: string) { return name.split(' ').map((n) => n[0]).join('').slice(0,2).toUpperCase(); }
+
+// ── SLA status badge ──────────────────────────────────────────────────────────
+const SLAStatusBadge: React.FC<{ type: 'met' | 'breached' | 'overdue' }> = ({ type }) => {
+  if (type === 'met') return (
+    <span className="inline-flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-semibold">
+      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+      Met
+    </span>
+  );
+  if (type === 'breached') return (
+    <span className="inline-flex items-center gap-1 text-[10px] bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold">
+      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+      Breached
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded font-semibold">
+      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      Overdue
+    </span>
+  );
+};
 
 // ── ImageModal ─────────────────────────────────────────────────────────────────
 const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = ({ src, alt, onClose }) => {
@@ -67,8 +92,6 @@ const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = 
 };
 
 // ── AuthImage ─────────────────────────────────────────────────────────────────
-// Fetches a GCS signed URL from the backend JSON endpoint, then sets it as the
-// native <img src>. The browser loads the image directly — no XHR, no CORS.
 const AuthImage: React.FC<{
   ticketId: string;
   attachmentId: string;
@@ -99,12 +122,7 @@ const AuthImage: React.FC<{
     </div>
   );
   return (
-    <img
-      src={src}
-      alt={alt}
-      className={clsx('object-cover cursor-zoom-in', className)}
-      onClick={() => onClick?.(src)}
-    />
+    <img src={src} alt={alt} className={clsx('object-cover cursor-zoom-in', className)} onClick={() => onClick?.(src)} />
   );
 };
 
@@ -179,19 +197,10 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; custom
         </div>
         {isImg ? (
           <div className="inline-block border border-[#dfe1e6] rounded overflow-hidden hover:border-[#0052cc] transition-colors">
-            <AuthImage
-              ticketId={ticketId}
-              attachmentId={att.id}
-              alt={att.file_name}
-              className="w-44 h-44"
-              onClick={(signedUrl) => setModalSrc(signedUrl)}
-            />
+            <AuthImage ticketId={ticketId} attachmentId={att.id} alt={att.file_name} className="w-44 h-44" onClick={(signedUrl) => setModalSrc(signedUrl)} />
           </div>
         ) : (
-          <button
-            onClick={() => openAttachment(ticketId, att.id)}
-            className="inline-flex items-center gap-3 px-3 py-2.5 bg-[#f4f5f7] border border-[#dfe1e6] rounded hover:bg-[#ebecf0] hover:border-[#b3bac5] transition-all group cursor-pointer"
-          >
+          <button onClick={() => openAttachment(ticketId, att.id)} className="inline-flex items-center gap-3 px-3 py-2.5 bg-[#f4f5f7] border border-[#dfe1e6] rounded hover:bg-[#ebecf0] hover:border-[#b3bac5] transition-all group cursor-pointer">
             <div className="w-8 h-8 bg-white border border-[#dfe1e6] rounded flex items-center justify-center text-base flex-shrink-0">{fileIcon(att.mime_type)}</div>
             <div className="min-w-0">
               <p className="text-sm text-[#172b4d] font-medium truncate max-w-[200px] group-hover:text-[#0052cc] transition-colors">{att.file_name}</p>
@@ -208,7 +217,7 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; custom
 export const TLTicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
   const dispatch = useAppDispatch();
-  const { tlTicketDetail, teamOverview, isLoading } = useAppSelector((s) => s.tickets);
+  const { tlTicketDetail, teamOverview, isLoading, products } = useAppSelector((s) => s.tickets);
   const { user: currentUser } = useAppSelector((s) => s.auth);
   const currentUserId = currentUser?.id ?? '';
   const tlInitials = currentUser?.name ? getInitials(currentUser.name) : 'TL';
@@ -239,6 +248,10 @@ export const TLTicketDetailPage: React.FC = () => {
   const resolutionBreached = !!tlTicketDetail?.sla_breached_at;
   const anyBreached = responseBreached || resolutionBreached;
 
+  const productName = tlTicketDetail?.product_id
+    ? products.find((p) => p.id === String(tlTicketDetail.product_id))?.name ?? null
+    : null;
+
   const loadThread = async () => {
     if (!ticketId) return;
     try {
@@ -249,16 +262,18 @@ export const TLTicketDetailPage: React.FC = () => {
       setAuthorNames(names);
     } catch { } finally { setThreadLoading(false); }
   };
-  const loadCustomerInfo = async () => { if (!ticketId) return; try { setCustomerInfo(await ticketsService.getTicketCustomerInfo(ticketId)); } catch { } };
+  const loadCustomerInfo = async () => { if (!ticketId) return; try { setCustomerInfo(await ticketsService.getTLTicketCustomerInfo(ticketId)); } catch { } };
   const loadBreachJustifications = async () => { if (!ticketId) return; try { setBreachJustifications(await ticketsService.getTLBreachJustifications(ticketId)); } catch { } };
 
   useEffect(() => {
     if (ticketId) { dispatch(fetchTLTicket(ticketId)); dispatch(fetchTeamOverview()); loadThread(); loadCustomerInfo(); loadBreachJustifications(); }
+    dispatch(fetchProducts());
   }, [ticketId, dispatch]);
 
   useEffect(() => { if (tlTicketDetail) setSelectedStatus(tlTicketDetail.status); }, [tlTicketDetail]);
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [thread]);
-  useEffect(() => { setShowReasonInput(['resolved','closed','on_hold'].includes(selectedStatus)); }, [selectedStatus]);
+  // ✅ TL only has 'closed' — no reason input needed, but keep for safety if extended later
+  useEffect(() => { setShowReasonInput(false); }, [selectedStatus]);
 
   const merged: ThreadEntry[] = thread
     ? [...thread.conversations.map((c) => ({ kind: 'message' as const, data: c })), ...thread.attachments.map((a) => ({ kind: 'attachment' as const, data: a }))].sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime())
@@ -305,24 +320,73 @@ export const TLTicketDetailPage: React.FC = () => {
     return agent?.full_name ?? null;
   })();
 
+  const responseIsBreached = !!t.response_sla_breached_at;
+  const responseIsMet      = !!t.first_response_at && !responseIsBreached;
+  const responseIsOverdue  = !t.first_response_at && !responseIsBreached && !!t.sla_response_due && new Date() > new Date(t.sla_response_due);
+
+  const resolveIsBreached = !!t.sla_breached_at;
+  const resolveIsMet      = !!t.resolved_at && !resolveIsBreached;
+  const resolveIsOverdue  = !t.resolved_at && !resolveIsBreached && !['resolved','closed'].includes(t.status) && !!t.sla_resolve_due && new Date() > new Date(t.sla_resolve_due);
+
   const col1 = [
     { label: 'Status', node: <StatusBadge status={t.status} /> },
     ...(t.priority ? [{ label: 'Priority', node: <PriorityLabel priority={t.priority} /> }] : []),
     ...(t.severity ? [{ label: 'Severity', node: <span className="flex items-center gap-1.5"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span> }] : []),
     { label: 'Assigned', node: !t.assigned_to ? <span className="text-[#ff991f]">Unassigned</span> : <span>{resolvedAgentName ?? `Agent ${String(t.assigned_to).slice(0,8)}…`}</span> },
   ];
+
   const col2 = [
+    ...(productName ? [{ label: 'Product', node: <span>{productName}</span> }] : []),
     ...(t.environment ? [{ label: 'Environment', node: <span className="capitalize">{t.environment}</span> }] : []),
     ...(t.source ? [{ label: 'Source', node: <span className="capitalize">{t.source}</span> }] : []),
     ...(t.customer_priority ? [{ label: 'Cust. priority', node: <span className="capitalize">{t.customer_priority}</span> }] : []),
   ];
+
   const col3 = [
     { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy')}</span> },
     { label: 'Reopens', node: <span>{t.reopen_count}</span> },
-    ...(t.sla_response_due ? [{ label: 'Response due', node: <span className={clsx(t.response_sla_breached_at ? 'text-[#de350b]' : '')}>{format(new Date(t.sla_response_due),'MMM d, h:mm a')}{t.response_sla_breached_at && <span className="ml-1 text-[10px] text-[#de350b]">Breached</span>}</span> }] : []),
-    ...(t.sla_resolve_due ? [{ label: 'Resolve due', node: <span className={clsx(t.sla_breached_at ? 'text-[#de350b]' : '')}>{format(new Date(t.sla_resolve_due),'MMM d, h:mm a')}{t.sla_breached_at && <span className="ml-1 text-[10px] text-[#de350b]">Breached</span>}</span> }] : []),
-    ...(t.first_response_at ? [{ label: 'First response', node: <span>{format(new Date(t.first_response_at),'MMM d, h:mm a')}</span> }] : []),
-    ...(t.resolved_at ? [{ label: 'Resolved', node: <span>{format(new Date(t.resolved_at),'MMM d, h:mm a')}</span> }] : []),
+    ...(t.sla_response_due ? [{
+      label: 'Response due',
+      node: (
+        <span className={clsx(
+          'flex items-center gap-1.5 text-sm flex-wrap',
+          responseIsBreached ? 'text-red-600 font-medium' :
+          responseIsMet      ? 'text-green-600 font-medium' :
+          responseIsOverdue  ? 'text-red-500' :
+                               'text-[#172b4d]',
+        )}>
+          {responseIsMet
+            ? <>Responded {format(new Date(t.first_response_at!), 'MMM d, h:mm a')}</>
+            : <>{format(new Date(t.sla_response_due), 'MMM d, h:mm a')}</>
+          }
+          {responseIsBreached && <SLAStatusBadge type="breached" />}
+          {responseIsMet      && <SLAStatusBadge type="met" />}
+          {responseIsOverdue  && <SLAStatusBadge type="overdue" />}
+        </span>
+      ),
+    }] : []),
+    ...(t.sla_resolve_due ? [{
+      label: 'Resolve due',
+      node: (
+        <span className={clsx(
+          'flex items-center gap-1.5 text-sm flex-wrap',
+          resolveIsBreached ? 'text-red-600 font-medium' :
+          resolveIsMet      ? 'text-green-600 font-medium' :
+          resolveIsOverdue  ? 'text-red-500' :
+                              'text-[#172b4d]',
+        )}>
+          {resolveIsMet
+            ? <>Resolved {format(new Date(t.resolved_at!), 'MMM d, h:mm a')}</>
+            : <>{format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}</>
+          }
+          {resolveIsBreached && <SLAStatusBadge type="breached" />}
+          {resolveIsMet      && <SLAStatusBadge type="met" />}
+          {resolveIsOverdue  && <SLAStatusBadge type="overdue" />}
+        </span>
+      ),
+    }] : []),
+    ...(t.first_response_at ? [{ label: 'First response', node: <span className="text-green-600">{format(new Date(t.first_response_at),'MMM d, h:mm a')}</span> }] : []),
+    ...(t.resolved_at ? [{ label: 'Resolved', node: <span className="text-green-600">{format(new Date(t.resolved_at),'MMM d, h:mm a')}</span> }] : []),
   ];
 
   return (
@@ -385,21 +449,20 @@ export const TLTicketDetailPage: React.FC = () => {
               <AgentSLAPanel createdAt={t.created_at} slaResponseDue={t.sla_response_due} slaResolveDue={t.sla_resolve_due} firstResponseAt={t.first_response_at} resolvedAt={t.resolved_at} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onHoldStartedAt={t.on_hold_started_at ?? null} onHoldAccumulated={t.on_hold_duration_accumulated ?? 0} status={t.status} showBreachJustifications breachJustifications={breachJustifications} />
             </div>
 
-            <div className="px-5"><SimilarTicketsPanel ticketId={t.id} /></div>
-
             <div className="px-5 grid grid-cols-2 gap-3">
               <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
                 <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Update Status</p>
                 <div className="flex items-start gap-3">
+                  {/* ✅ Only "Closed" is available to team leads */}
                   <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors">
-                    {INFO_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    {t.status !== 'closed' && <option value={t.status} disabled>{t.status.replace(/_/g,' ').replace(/\b\w/g,(c)=>c.toUpperCase())} (current)</option>}
+                    {TL_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                   <button onClick={onStatusUpdate} disabled={updatingStatus || selectedStatus === t.status} className="h-8 px-4 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                     {updatingStatus && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
                     Apply
                   </button>
                 </div>
-                {showReasonInput && <textarea value={statusReason} onChange={(e) => setStatusReason(e.target.value)} placeholder="Add a note for the customer (optional)…" rows={2} className="mt-2 w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] placeholder:text-[#8993a4] resize-none outline-none focus:border-[#4c9aff] transition-colors" />}
                 <p className="text-xs text-[#8993a4] mt-1.5">Customer will receive an email on status change.</p>
               </div>
               <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">

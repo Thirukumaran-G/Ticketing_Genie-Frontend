@@ -59,15 +59,6 @@ export const fetchMyTicket = createAsyncThunk(
   },
 );
 
-/**
- * createTicketThunk — now accepts an optional `files` array.
- * Files are passed through to ticketsService.createTicket() which sends
- * them as part of a single multipart/form-data request. The backend saves
- * attachments synchronously before returning the 201 response.
- *
- * Usage:
- *   dispatch(createTicketThunk({ title, description, product_id, customer_severity, files }))
- */
 export const createTicketThunk = createAsyncThunk(
   'tickets/create',
   async (
