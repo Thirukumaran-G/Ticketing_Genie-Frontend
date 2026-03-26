@@ -17,6 +17,8 @@ const FILTER_TABS = [
   { key: 'in_progress', label: 'In Progress' },
   { key: 'resolved',    label: 'Resolved' },
   { key: 'closed',      label: 'Closed' },
+  { key: 'reopened',      label: 'Reopened'}
+
 ];
 
 const TicketRow: React.FC<{ ticket: CustomerTicketListItem }> = ({ ticket }) => (
@@ -93,7 +95,7 @@ export const MyTicketsPage: React.FC = () => {
         {/* Table */}
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-100 bg-blue-50/50">
-            <div className="flex-shrink-0 w-36 text-xs font-semibold text-blue-600 uppercase tracking-widest">Ticket #</div>
+            <div className="flex-shrink-0 w-36 text-xs font-semibold text-blue-600 uppercase tracking-widest">Ticket </div>
             <div className="flex-1 text-xs font-semibold text-blue-600 uppercase tracking-widest">Issue</div>
             <div className="flex-shrink-0 w-24 text-center text-xs font-semibold text-blue-600 uppercase tracking-widest">Priority</div>
             <div className="flex-shrink-0 w-32 text-xs font-semibold text-blue-600 uppercase tracking-widest">Status</div>

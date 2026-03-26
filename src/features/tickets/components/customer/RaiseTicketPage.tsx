@@ -20,12 +20,7 @@ const DRAFT_KEY = 'ticket_draft_v1';
 const AUTOSAVE_DEBOUNCE_MS = 600;
 
 const ALLOWED_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
-  '.pdf', '.txt', '.md', '.csv',
-  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.tar', '.gz',
-  '.log', '.json', '.xml', '.yaml', '.yml',
-]);
+  '.jpg', '.jpeg', '.png','.pdf']);
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 

@@ -22,8 +22,11 @@ interface AttachmentItem {
   id: string; file_name: string; file_size: number | null; mime_type: string | null; created_at: string;
 }
 interface CustomerInfo { full_name: string; email: string; }
+interface TeamItem { id: string; name: string; }
 type ThreadEntry = { kind: 'message'; data: ConversationItem } | { kind: 'attachment'; data: AttachmentItem };
 interface ThreadData { conversations: ConversationItem[]; attachments: AttachmentItem[]; }
+
+const CUSTOMER_SUPPORT_TEAM_NAME = 'Customer Support Team';
 
 const IMAGE_TYPES = new Set(['image/jpeg','image/png','image/gif','image/webp','image/svg+xml']);
 
@@ -157,11 +160,13 @@ const TextBubble: React.FC<{ item: ConversationItem; authorNames: Record<string,
   const isApologyNote = item.content.startsWith('[APOLOGY_SENT]');
   const isBulkNote = item.content.startsWith('[BULK_');
   const isUnassignNote = item.content.startsWith('[Unassigned]');
+  const isRerouteNote = item.content.startsWith('[REROUTED]');
   const getSystemBadge = () => {
     if (isBreachNote) return { label: 'Breach justification', color: 'text-purple-600 bg-purple-50 border-purple-200' };
     if (isApologyNote) return { label: 'Apology sent', color: 'text-pink-600 bg-pink-50 border-pink-200' };
     if (isBulkNote) return { label: 'Bulk action', color: 'text-teal-600 bg-teal-50 border-teal-200' };
     if (isUnassignNote) return { label: 'Unassigned', color: 'text-orange-600 bg-orange-50 border-orange-200' };
+    if (isRerouteNote) return { label: 'Ticket rerouted', color: 'text-blue-600 bg-blue-50 border-blue-200' };
     return null;
   };
   const badge = getSystemBadge();
@@ -240,6 +245,11 @@ export const TLTicketDetailPage: React.FC = () => {
   const [showApologyModal, setShowApologyModal] = useState(false);
   const [breachJustifications, setBreachJustifications] = useState<BreachJustification[]>([]);
 
+  // ── Route ticket state (Customer Support TL only) ────────────────────────
+  const [allTeams, setAllTeams] = useState<TeamItem[]>([]);
+  const [selectedRerouteTeam, setSelectedRerouteTeam] = useState('');
+  const [rerouting, setRerouting] = useState(false);
+
   const threadEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const customerName = customerInfo?.full_name || 'Customer';
@@ -251,6 +261,9 @@ export const TLTicketDetailPage: React.FC = () => {
   const productName = tlTicketDetail?.product_id
     ? products.find((p) => p.id === String(tlTicketDetail.product_id))?.name ?? null
     : null;
+
+  // ── Is this user the Customer Support Team lead? ─────────────────────────
+  const isCustomerSupportTL = teamOverview?.team_name === CUSTOMER_SUPPORT_TEAM_NAME;
 
   const loadThread = async () => {
     if (!ticketId) return;
@@ -265,14 +278,28 @@ export const TLTicketDetailPage: React.FC = () => {
   const loadCustomerInfo = async () => { if (!ticketId) return; try { setCustomerInfo(await ticketsService.getTLTicketCustomerInfo(ticketId)); } catch { } };
   const loadBreachJustifications = async () => { if (!ticketId) return; try { setBreachJustifications(await ticketsService.getTLBreachJustifications(ticketId)); } catch { } };
 
+  const loadAllTeams = async () => {
+    try {
+      const teams = await ticketsService.getAllTeams();
+      setAllTeams(teams);
+    } catch {
+      // non-critical, silently ignore
+    }
+  };
+
   useEffect(() => {
     if (ticketId) { dispatch(fetchTLTicket(ticketId)); dispatch(fetchTeamOverview()); loadThread(); loadCustomerInfo(); loadBreachJustifications(); }
     dispatch(fetchProducts());
   }, [ticketId, dispatch]);
 
+  useEffect(() => {
+    if (isCustomerSupportTL) {
+      loadAllTeams();
+    }
+  }, [isCustomerSupportTL]);
+
   useEffect(() => { if (tlTicketDetail) setSelectedStatus(tlTicketDetail.status); }, [tlTicketDetail]);
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [thread]);
-  // ✅ TL only has 'closed' — no reason input needed, but keep for safety if extended later
   useEffect(() => { setShowReasonInput(false); }, [selectedStatus]);
 
   const merged: ThreadEntry[] = thread
@@ -311,6 +338,22 @@ export const TLTicketDetailPage: React.FC = () => {
     finally { setAssigning(false); }
   };
 
+  const onReroute = async () => {
+    if (!ticketId || !selectedRerouteTeam) return;
+    try {
+      setRerouting(true);
+      await ticketsService.rerouteTicket(ticketId, selectedRerouteTeam);
+      toast.success('Ticket routed successfully. The team lead has been notified.');
+      setSelectedRerouteTeam('');
+      dispatch(fetchTLTicket(ticketId));
+      loadThread();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to route ticket');
+    } finally {
+      setRerouting(false);
+    }
+  };
+
   if (isLoading || !tlTicketDetail) return <MainLayout navItems={tlNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
 
   const t = tlTicketDetail;
@@ -320,6 +363,7 @@ export const TLTicketDetailPage: React.FC = () => {
     return agent?.full_name ?? null;
   })();
 
+  // ── SLA state flags ───────────────────────────────────────────────────────
   const responseIsBreached = !!t.response_sla_breached_at;
   const responseIsMet      = !!t.first_response_at && !responseIsBreached;
   const responseIsOverdue  = !t.first_response_at && !responseIsBreached && !!t.sla_response_due && new Date() > new Date(t.sla_response_due);
@@ -328,22 +372,37 @@ export const TLTicketDetailPage: React.FC = () => {
   const resolveIsMet      = !!t.resolved_at && !resolveIsBreached;
   const resolveIsOverdue  = !t.resolved_at && !resolveIsBreached && !['resolved','closed'].includes(t.status) && !!t.sla_resolve_due && new Date() > new Date(t.sla_resolve_due);
 
+  // Reroute dropdown: exclude Customer Support Team itself
+  const rerouteOptions = allTeams.filter((team) => team.name !== CUSTOMER_SUPPORT_TEAM_NAME);
+
   const col1 = [
     { label: 'Status', node: <StatusBadge status={t.status} /> },
     ...(t.priority ? [{ label: 'Priority', node: <PriorityLabel priority={t.priority} /> }] : []),
     ...(t.severity ? [{ label: 'Severity', node: <span className="flex items-center gap-1.5"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span> }] : []),
+    {
+      label: 'Cust. priority',
+      node: t.customer_priority ? (
+        <span className="flex items-center gap-1.5">
+          <span className="capitalize">{t.customer_priority}</span>
+          {t.priority_overridden && (
+            <span className="text-[10px] font-medium text-[#ff991f] bg-[#fff7e6] border border-[#ffe2a8] px-1.5 py-0.5 rounded">Overridden</span>
+          )}
+        </span>
+      ) : <span className="text-[#8993a4]">—</span>,
+    },
     { label: 'Assigned', node: !t.assigned_to ? <span className="text-[#ff991f]">Unassigned</span> : <span>{resolvedAgentName ?? `Agent ${String(t.assigned_to).slice(0,8)}…`}</span> },
   ];
 
   const col2 = [
     ...(productName ? [{ label: 'Product', node: <span>{productName}</span> }] : []),
     ...(t.environment ? [{ label: 'Environment', node: <span className="capitalize">{t.environment}</span> }] : []),
+    { label: 'Customer Tier', node: t.tier_snapshot ? <span className="capitalize font-medium">{t.tier_snapshot}</span> : <span className="text-[#8993a4]">—</span> },
     ...(t.source ? [{ label: 'Source', node: <span className="capitalize">{t.source}</span> }] : []),
-    ...(t.customer_priority ? [{ label: 'Cust. priority', node: <span className="capitalize">{t.customer_priority}</span> }] : []),
   ];
 
+  // ── col3: always show due times unchanged; colour + badge when met/breached/overdue ──
   const col3 = [
-    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy')}</span> },
+    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
     { label: 'Reopens', node: <span>{t.reopen_count}</span> },
     ...(t.sla_response_due ? [{
       label: 'Response due',
@@ -355,16 +414,14 @@ export const TLTicketDetailPage: React.FC = () => {
           responseIsOverdue  ? 'text-red-500' :
                                'text-[#172b4d]',
         )}>
-          {responseIsMet
-            ? <>Responded {format(new Date(t.first_response_at!), 'MMM d, h:mm a')}</>
-            : <>{format(new Date(t.sla_response_due), 'MMM d, h:mm a')}</>
-          }
+          {format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
           {responseIsBreached && <SLAStatusBadge type="breached" />}
           {responseIsMet      && <SLAStatusBadge type="met" />}
           {responseIsOverdue  && <SLAStatusBadge type="overdue" />}
         </span>
       ),
     }] : []),
+    ...(t.first_response_at ? [{ label: 'First response', node: <span className="text-green-600">{format(new Date(t.first_response_at), 'MMM d, h:mm a')}</span> }] : []),
     ...(t.sla_resolve_due ? [{
       label: 'Resolve due',
       node: (
@@ -375,18 +432,14 @@ export const TLTicketDetailPage: React.FC = () => {
           resolveIsOverdue  ? 'text-red-500' :
                               'text-[#172b4d]',
         )}>
-          {resolveIsMet
-            ? <>Resolved {format(new Date(t.resolved_at!), 'MMM d, h:mm a')}</>
-            : <>{format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}</>
-          }
+          {format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
           {resolveIsBreached && <SLAStatusBadge type="breached" />}
           {resolveIsMet      && <SLAStatusBadge type="met" />}
           {resolveIsOverdue  && <SLAStatusBadge type="overdue" />}
         </span>
       ),
     }] : []),
-    ...(t.first_response_at ? [{ label: 'First response', node: <span className="text-green-600">{format(new Date(t.first_response_at),'MMM d, h:mm a')}</span> }] : []),
-    ...(t.resolved_at ? [{ label: 'Resolved', node: <span className="text-green-600">{format(new Date(t.resolved_at),'MMM d, h:mm a')}</span> }] : []),
+    ...(t.resolved_at ? [{ label: 'Resolved at', node: <span className="text-green-600">{format(new Date(t.resolved_at), 'MMM d, h:mm a')}</span> }] : []),
   ];
 
   return (
@@ -449,11 +502,15 @@ export const TLTicketDetailPage: React.FC = () => {
               <AgentSLAPanel createdAt={t.created_at} slaResponseDue={t.sla_response_due} slaResolveDue={t.sla_resolve_due} firstResponseAt={t.first_response_at} resolvedAt={t.resolved_at} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onHoldStartedAt={t.on_hold_started_at ?? null} onHoldAccumulated={t.on_hold_duration_accumulated ?? 0} status={t.status} showBreachJustifications breachJustifications={breachJustifications} />
             </div>
 
-            <div className="px-5 grid grid-cols-2 gap-3">
+            {/* ── Action panels grid ─────────────────────────────────────────── */}
+            <div className={clsx(
+              'px-5 grid gap-3',
+              isCustomerSupportTL ? 'grid-cols-3' : 'grid-cols-2',
+            )}>
+              {/* Update Status */}
               <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
                 <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Update Status</p>
                 <div className="flex items-start gap-3">
-                  {/* ✅ Only "Closed" is available to team leads */}
                   <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors">
                     {t.status !== 'closed' && <option value={t.status} disabled>{t.status.replace(/_/g,' ').replace(/\b\w/g,(c)=>c.toUpperCase())} (current)</option>}
                     {TL_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -465,6 +522,8 @@ export const TLTicketDetailPage: React.FC = () => {
                 </div>
                 <p className="text-xs text-[#8993a4] mt-1.5">Customer will receive an email on status change.</p>
               </div>
+
+              {/* Reassign Agent */}
               <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
                 <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Reassign Agent</p>
                 <div className="flex items-start gap-3">
@@ -479,6 +538,44 @@ export const TLTicketDetailPage: React.FC = () => {
                 </div>
                 <p className="text-xs text-[#8993a4] mt-1.5">Agent will be notified of assignment.</p>
               </div>
+
+              {/* Route Ticket — Customer Support TL only */}
+              {isCustomerSupportTL && (
+                <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest">Route Ticket</p>
+                    <span className="text-[10px] font-medium text-[#0052cc] bg-[#e9f0ff] border border-[#c0d4ff] px-1.5 py-0.5 rounded">CS Team Lead</span>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <select
+                      value={selectedRerouteTeam}
+                      onChange={(e) => setSelectedRerouteTeam(e.target.value)}
+                      className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors flex-1"
+                    >
+                      <option value="">Select team…</option>
+                      {rerouteOptions.map((team) => (
+                        <option key={team.id} value={team.id}>{team.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={onReroute}
+                      disabled={rerouting || !selectedRerouteTeam}
+                      className="h-8 px-4 rounded border border-[#0052cc] text-sm text-[#0052cc] hover:bg-[#e9f0ff] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                    >
+                      {rerouting
+                        ? <div className="w-3.5 h-3.5 border border-[#0052cc] border-t-transparent rounded-full animate-spin" />
+                        : (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                          </svg>
+                        )
+                      }
+                      Route
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#8993a4] mt-1.5">The target team lead will be notified.</p>
+                </div>
+              )}
             </div>
 
             <div className="px-5">

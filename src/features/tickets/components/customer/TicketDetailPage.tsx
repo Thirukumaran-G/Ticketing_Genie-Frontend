@@ -68,8 +68,6 @@ const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = 
 };
 
 // ── AuthImage ─────────────────────────────────────────────────────────────────
-// Fetches a GCS signed URL from the backend JSON endpoint, then sets it as the
-// native <img src>. The browser loads the image directly — no XHR, no CORS.
 const AuthImage: React.FC<{
   ticketId: string;
   attachmentId: string;
@@ -273,23 +271,42 @@ export const TicketDetailPage: React.FC = () => {
   if (isLoading || !myTicketDetail) return <MainLayout navItems={customerNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
 
   const t = myTicketDetail;
-  const canReplyOrReopen = !['closed'].includes(t.status); 
+  const canReplyOrReopen = true;
   const canClose = t.status === 'resolved';
   const productName = t.product_id ? products.find((p) => p.id === String(t.product_id))?.name ?? null : null;
   const tierInfo = t.tier_snapshot ? getTierInfo(t.tier_snapshot) : null;
 
+  // ── SLA nodes: always show the due time, only change colour + add badge when met/overdue ──
   const responseDueNode = (() => {
     if (!t.sla_response_due) return null;
-    const due = new Date(t.sla_response_due); const now = new Date();
-    const met = !!t.first_response_at; const overdue = !met && now > due;
-    return <span className={clsx('text-sm', met ? 'text-[#216e4e]' : overdue ? 'text-[#ae2e24]' : 'text-[#172b4d]')}>{met ? `Responded ${format(new Date(t.first_response_at!), 'MMM d, h:mm a')}` : overdue ? `Overdue · was ${format(due, 'MMM d, h:mm a')}` : format(due, 'MMM d, h:mm a')}</span>;
+    const due = new Date(t.sla_response_due);
+    const met = !!t.first_response_at;
+    const overdue = !met && new Date() > due;
+    return (
+      <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap',
+        met ? 'text-[#216e4e]' : overdue ? 'text-[#ae2e24]' : 'text-[#172b4d]'
+      )}>
+        {format(due, 'MMM d, h:mm a')}
+        {met && <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-semibold">Met</span>}
+        {overdue && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-1.5 py-0.5 rounded font-semibold">Overdue</span>}
+      </span>
+    );
   })();
 
   const resolveDueNode = (() => {
     if (!t.sla_resolve_due) return null;
-    const due = new Date(t.sla_resolve_due); const now = new Date();
-    const met = t.status === 'resolved' || t.status === 'closed'; const overdue = !met && now > due;
-    return <span className={clsx('text-sm', met ? 'text-[#216e4e]' : overdue ? 'text-[#ae2e24]' : 'text-[#172b4d]')}>{met ? (t.resolved_at ? `Resolved ${format(new Date(t.resolved_at), 'MMM d, h:mm a')}` : 'Resolved') : overdue ? `Overdue · was ${format(due, 'MMM d, h:mm a')}` : format(due, 'MMM d, h:mm a')}</span>;
+    const due = new Date(t.sla_resolve_due);
+    const met = t.status === 'resolved' || t.status === 'closed';
+    const overdue = !met && new Date() > due;
+    return (
+      <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap',
+        met ? 'text-[#216e4e]' : overdue ? 'text-[#ae2e24]' : 'text-[#172b4d]'
+      )}>
+        {format(due, 'MMM d, h:mm a')}
+        {met && <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-semibold">Met</span>}
+        {overdue && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-1.5 py-0.5 rounded font-semibold">Overdue</span>}
+      </span>
+    );
   })();
 
   return (
@@ -310,12 +327,30 @@ export const TicketDetailPage: React.FC = () => {
               <p className="text-[#44546f] text-xs font-mono mb-0.5">{t.ticket_number}</p>
               <h1 className="text-[#172b4d] text-xl font-semibold leading-snug">{t.title ?? '(No title)'}</h1>
             </div>
-            <button type="button" onClick={onClose} disabled={!canClose || closing}
-              title={canClose ? 'Mark this ticket as closed' : `Can only close a resolved ticket (current: ${t.status})`}
-              className={clsx('flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm font-medium transition-all', canClose ? 'bg-white border-[#dfe1e6] text-[#172b4d] hover:border-[#b3bac5] hover:bg-[#f4f5f7] cursor-pointer' : 'bg-[#f4f5f7] border-[#dfe1e6] text-[#c1c7d0] cursor-not-allowed')}>
-              {closing ? <div className="w-3.5 h-3.5 border border-[#44546f] border-t-transparent rounded-full animate-spin" /> : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-              Close ticket
-            </button>
+            <div className="flex items-center gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    if (ticketId) {
+                      dispatch(fetchMyTicket(ticketId));
+                      loadThread();
+                      toast.success('Refreshed');
+                    }
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border border-[#dfe1e6] bg-white text-[#172b4d] text-sm font-medium hover:border-[#b3bac5] hover:bg-[#f4f5f7] transition-all cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </button>
+                <button type="button" onClick={onClose} disabled={!canClose || closing}
+                  title={canClose ? 'Mark this ticket as closed' : `Can only close a resolved ticket (current: ${t.status})`}
+                  className={clsx('flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm font-medium transition-all', canClose ? 'bg-white border-[#dfe1e6] text-[#172b4d] hover:border-[#b3bac5] hover:bg-[#f4f5f7] cursor-pointer' : 'bg-[#f4f5f7] border-[#dfe1e6] text-[#c1c7d0] cursor-not-allowed')}>
+                  {closing ? <div className="w-3.5 h-3.5 border border-[#44546f] border-t-transparent rounded-full animate-spin" /> : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                  Close ticket
+                </button>
+              </div>
           </div>
 
           <CustomerSLAPanel createdAt={t.created_at} slaResponseDue={t.sla_response_due} slaResolveDue={t.sla_resolve_due} firstResponseAt={t.first_response_at} resolvedAt={t.resolved_at} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onHoldStartedAt={null} onHoldAccumulated={0} status={t.status} />
@@ -326,7 +361,7 @@ export const TicketDetailPage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Status</span><StatusBadge status={t.status} /></div>
                 {t.priority && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Priority</span><PriorityLabel priority={t.priority} /></div>}
-                {t.severity && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Severity</span><span className="flex items-center gap-1.5 text-sm text-[#172b4d]"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span></div>}
+                {t.severity && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">System Severity</span><span className="flex items-center gap-1.5 text-sm text-[#172b4d]"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span></div>}
                 {tierInfo && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Tier</span><span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-semibold', tierInfo.bg, tierInfo.color)}><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>{tierInfo.label}</span></div>}
                 {t.reopen_count > 0 && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Reopens</span><span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#fff7e6] border border-[#f3cc4d] text-xs font-semibold text-[#974f0c]"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>{t.reopen_count}×</span></div>}
               </div>
@@ -334,11 +369,14 @@ export const TicketDetailPage: React.FC = () => {
                 <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Assignee</span>{t.assigned_to ? assigneeName ? <span className="flex items-center gap-1.5 min-w-0"><div className="w-5 h-5 rounded-full bg-[#dfe1e6] flex items-center justify-center text-[10px] font-bold text-[#44546f] flex-shrink-0">{getInitials(assigneeName)}</div><span className="text-sm text-[#172b4d] truncate">{assigneeName}</span></span> : <span className="text-sm text-[#8993a4]">Loading…</span> : <span className="text-sm text-[#8993a4]">Unassigned</span>}</div>
                 {productName && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Product</span><span className="text-sm text-[#172b4d] truncate">{productName}</span></div>}
                 {t.environment && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Environment</span><span className="text-sm text-[#172b4d] capitalize">{t.environment}</span></div>}
+                {t.customer_priority && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Your severity</span><span className="text-sm text-[#172b4d] capitalize">{t.customer_priority}</span></div>}
               </div>
               <div>
-                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Raised</span><span className="text-sm text-[#172b4d]">{format(new Date(t.created_at), 'MMM d, yyyy')}</span></div>
-                {responseDueNode && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Response</span>{responseDueNode}</div>}
-                {resolveDueNode && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Resolve</span>{resolveDueNode}</div>}
+                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Raised</span><span className="text-sm text-[#172b4d]">{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span></div>
+                {responseDueNode && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Response due</span>{responseDueNode}</div>}
+                {t.first_response_at && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">First response</span><span className="text-sm text-[#216e4e]">{format(new Date(t.first_response_at), 'MMM d, h:mm a')}</span></div>}
+                {resolveDueNode && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Resolve due</span>{resolveDueNode}</div>}
+                {t.resolved_at && <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fafbfc] transition-colors"><span className="w-20 flex-shrink-0 text-xs text-[#6b778c]">Resolved at</span><span className="text-sm text-[#216e4e]">{format(new Date(t.resolved_at), 'MMM d, h:mm a')}</span></div>}
               </div>
             </div>
           </div>

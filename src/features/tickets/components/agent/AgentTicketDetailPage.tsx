@@ -299,7 +299,6 @@ export const AgentTicketDetailPage: React.FC = () => {
       loadThread();
       loadCustomerInfo();
     }
-    // ✅ Always fetch products — no guard so stale/empty cache never blocks the name lookup
     dispatch(fetchProducts());
   }, [ticketId]);
 
@@ -370,8 +369,6 @@ export const AgentTicketDetailPage: React.FC = () => {
     );
   }
 
-
-
   const t = agentTicketDetail;
   const hasBreach = !!(t.sla_breached_at || t.response_sla_breached_at);
   console.log('product_id:', t.product_id, typeof t.product_id);
@@ -392,29 +389,49 @@ export const AgentTicketDetailPage: React.FC = () => {
     ...(t.source ? [{ label: 'Source', node: <span className="capitalize">{t.source}</span> }] : []),
     ...(t.customer_priority ? [{ label: 'Cust. priority', node: <span className="capitalize">{t.customer_priority}</span> }] : []),
   ];
+
+  // ── col3: always show due times as-is; change colour + add badge when met/breached/overdue ──
   const col3 = [
-    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy')}</span> },
+    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
     { label: 'Reopens', node: <span>{t.reopen_count}</span> },
     ...(t.sla_response_due ? [{ label: 'Response due', node: (() => {
-      const isBreached = !!t.response_sla_breached_at; const isMet = !!t.first_response_at && !isBreached; const isOverdue = !t.first_response_at && !isBreached && new Date() > new Date(t.sla_response_due);
-      return (<span className={clsx('flex items-center gap-1.5 text-sm', isBreached ? 'text-[#de350b] font-medium' : isMet ? 'text-green-600 font-medium' : isOverdue ? 'text-[#de350b]' : 'text-[#172b4d]')}>
-        {isMet ? `Responded ${format(new Date(t.first_response_at!), 'MMM d, h:mm a')}` : format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
-        {isBreached && <span className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-1 py-0.5 rounded font-semibold">Breached</span>}
-        {isMet && <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1 py-0.5 rounded font-semibold">Met</span>}
-        {isOverdue && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-1 py-0.5 rounded font-semibold">Overdue</span>}
-      </span>);
-    })() }] : []),
-    ...(t.sla_resolve_due ? [{ label: 'Resolve due', node: (() => {
-      const isBreached = !!t.sla_breached_at; const isMet = !!t.resolved_at && !isBreached; const isOverdue = !t.resolved_at && !isBreached && !['resolved','closed'].includes(t.status) && new Date() > new Date(t.sla_resolve_due);
-      return (<span className={clsx('flex items-center gap-1.5 text-sm', isBreached ? 'text-[#de350b] font-medium' : isMet ? 'text-green-600 font-medium' : isOverdue ? 'text-[#de350b]' : 'text-[#172b4d]')}>
-        {isMet ? `Resolved ${format(new Date(t.resolved_at!), 'MMM d, h:mm a')}` : format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
-        {isBreached && <span className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-1 py-0.5 rounded font-semibold">Breached</span>}
-        {isMet && <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1 py-0.5 rounded font-semibold">Met</span>}
-        {isOverdue && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-1 py-0.5 rounded font-semibold">Overdue</span>}
-      </span>);
+      const isBreached = !!t.response_sla_breached_at;
+      const isMet = !!t.first_response_at && !isBreached;
+      const isOverdue = !t.first_response_at && !isBreached && new Date() > new Date(t.sla_response_due);
+      return (
+        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap',
+          isBreached ? 'text-[#de350b] font-medium' :
+          isMet      ? 'text-green-600 font-medium' :
+          isOverdue  ? 'text-[#de350b]' :
+                       'text-[#172b4d]'
+        )}>
+          {format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
+          {isBreached && <span className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-1 py-0.5 rounded font-semibold">Breached</span>}
+          {isMet      && <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1 py-0.5 rounded font-semibold">Met</span>}
+          {isOverdue  && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-1 py-0.5 rounded font-semibold">Overdue</span>}
+        </span>
+      );
     })() }] : []),
     ...(t.first_response_at ? [{ label: 'First response', node: <span className="text-green-600">{format(new Date(t.first_response_at), 'MMM d, h:mm a')}</span> }] : []),
-    ...(t.resolved_at ? [{ label: 'Resolved', node: <span>{format(new Date(t.resolved_at), 'MMM d, h:mm a')}</span> }] : []),
+    ...(t.sla_resolve_due ? [{ label: 'Resolve due', node: (() => {
+      const isBreached = !!t.sla_breached_at;
+      const isMet = !!t.resolved_at && !isBreached;
+      const isOverdue = !t.resolved_at && !isBreached && !['resolved','closed'].includes(t.status) && new Date() > new Date(t.sla_resolve_due);
+      return (
+        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap',
+          isBreached ? 'text-[#de350b] font-medium' :
+          isMet      ? 'text-green-600 font-medium' :
+          isOverdue  ? 'text-[#de350b]' :
+                       'text-[#172b4d]'
+        )}>
+          {format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
+          {isBreached && <span className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-1 py-0.5 rounded font-semibold">Breached</span>}
+          {isMet      && <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1 py-0.5 rounded font-semibold">Met</span>}
+          {isOverdue  && <span className="text-[10px] bg-red-50 text-red-500 border border-red-100 px-1 py-0.5 rounded font-semibold">Overdue</span>}
+        </span>
+      );
+    })() }] : []),
+    ...(t.resolved_at ? [{ label: 'Resolved at', node: <span className="text-green-600">{format(new Date(t.resolved_at), 'MMM d, h:mm a')}</span> }] : []),
   ];
 
   return (

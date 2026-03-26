@@ -238,6 +238,18 @@ export const ticketsService = {
       .get<{ url: string }>(`/teamlead/tickets/${ticketId}/attachments/${attachmentId}/signed-url`)
       .then((r) => r.data.url),
 
+  getAllTeams: (productId?: string) =>
+  ticketClient
+    .get<{ id: string; name: string }[]>('/teamlead/teams', {
+      params: productId ? { product_id: productId } : {},
+    })
+    .then((r) => r.data),
+
+  rerouteTicket: (ticketId: string, targetTeamId: string) =>
+    ticketClient
+      .post<TLTicketDetail>(`/teamlead/tickets/${ticketId}/reroute`, { target_team_id: targetTeamId })
+      .then((r) => r.data),
+
   // ── Notification Templates ────────────────────────────────────────────────
 
   listNotificationTemplates: () =>

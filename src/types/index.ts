@@ -33,7 +33,7 @@ export interface CustomerTicketListItem {
   ticket_number: string;
   title?: string;
   status: string;
-  customer_severity?: string;
+  customer_priority?: string;
   priority?: string;
   severity?: string;
   product_id?: string;
@@ -50,6 +50,7 @@ export interface CustomerTicketDetail extends CustomerTicketListItem {
   assigned_to?:             string;       
   description?:             string;
   priority_overridden:      boolean;
+  customer_priority?: string;
   override_reason?:         string;
   tier_snapshot?:           string;
   first_response_at?:       string;
