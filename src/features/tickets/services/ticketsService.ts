@@ -182,6 +182,14 @@ export const ticketsService = {
         params: status ? { status } : {},
       })
       .then((r) => r.data),
+  
+  updateAgentSkill: (agentUserId: string, skillText: string) =>
+    ticketClient
+      .patch<{ user_id: string; skills: { skill_text: string } }>(
+        `/teamlead/members/${agentUserId}/skill`,
+        { skill_text: skillText },
+      )
+      .then((r) => r.data),
 
   getTLTicket: (ticketId: string) =>
     ticketClient

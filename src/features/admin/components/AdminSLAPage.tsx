@@ -33,7 +33,7 @@ const Sel: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: str
   <div>
     <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-widest">{label}</label>
     <select
-      className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+      className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
       {...props}
     >
       {children}
@@ -43,14 +43,15 @@ const Sel: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: str
 );
 
 export const AdminSLAPage: React.FC = () => {
-  const [rules,      setRules]      = useState<SLARuleResponse[]>([]);
-  const [tiers,      setTiers]      = useState<{ id: string; name: string }[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [rules,        setRules]        = useState<SLARuleResponse[]>([]);
+  const [tiers,        setTiers]        = useState<{ id: string; name: string }[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showModal,    setShowModal]    = useState(false);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [deletingId,   setDeletingId]   = useState<string | null>(null);
+  const [editingRule,  setEditingRule]  = useState<SLARuleResponse | null>(null);
 
-  const { register, handleSubmit, reset, formState: { errors } } =
+  const { register, handleSubmit, reset, setValue, formState: { errors } } =
     useForm<Form>({ resolver: zodResolver(schema) });
 
   const load = async () => {
@@ -58,7 +59,7 @@ export const AdminSLAPage: React.FC = () => {
     try {
       const [r, t] = await Promise.all([
         adminTicketService.listSLARules(),
-        adminAuthService.listTiers(),   // ← direct from auth-service, reliable
+        adminAuthService.listTiers(),
       ]);
       setRules(r);
       setTiers(t);
@@ -69,14 +70,39 @@ export const AdminSLAPage: React.FC = () => {
 
   useEffect(() => { load(); }, []);
 
+  const openCreate = () => {
+    setEditingRule(null);
+    reset();
+    setShowModal(true);
+  };
+
+  const openEdit = (rule: SLARuleResponse) => {
+    setEditingRule(rule);
+    setValue('tier_id',             rule.tier_id);
+    setValue('priority',            rule.priority);
+    setValue('response_time_min',   rule.response_time_min);
+    setValue('resolution_time_min', rule.resolution_time_min);
+    setShowModal(true);
+  };
+
+  const onClose = () => {
+    setShowModal(false);
+    setEditingRule(null);
+    reset();
+  };
+
   const onSubmit = async (d: Form) => {
     try {
       setSubmitting(true);
       await adminTicketService.upsertSLARule(d);
-      toast.success('SLA rule saved');
-      reset(); setShowCreate(false); load();
-    } catch { toast.error('Failed'); }
-    finally { setSubmitting(false); }
+      toast.success(editingRule ? 'SLA rule updated' : 'SLA rule saved');
+      onClose();
+      load();
+    } catch {
+      toast.error('Failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const onDelete = async (id: string) => {
@@ -86,11 +112,16 @@ export const AdminSLAPage: React.FC = () => {
       await adminTicketService.deleteSLARule(id);
       toast.success('Rule deleted');
       load();
-    } catch { toast.error('Failed'); }
-    finally { setDeletingId(null); }
+    } catch {
+      toast.error('Failed');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const tierName = (id: string) => tiers.find(t => t.id === id)?.name ?? '—';
+
+  const isEditing = editingRule !== null;
 
   return (
     <MainLayout navItems={adminNav} pageTitle="SLA Rules">
@@ -103,7 +134,7 @@ export const AdminSLAPage: React.FC = () => {
             <p className="text-slate-500 text-sm mt-0.5">Response and resolution targets per tier + priority</p>
           </div>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openCreate}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,12 +148,12 @@ export const AdminSLAPage: React.FC = () => {
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm w-full">
 
           {/* Header */}
-          <div className="grid grid-cols-[180px_120px_1fr_1fr_80px] px-6 py-3 bg-blue-600">
+          <div className="grid grid-cols-[180px_120px_1fr_1fr_100px] px-6 py-3 bg-blue-600">
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Tier</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Priority</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Response (min)</p>
             <p className="text-xs font-semibold text-white uppercase tracking-widest">Resolution (min)</p>
-            <p className="text-xs font-semibold text-white uppercase tracking-widest">Action</p>
+            <p className="text-xs font-semibold text-white uppercase tracking-widest">Actions</p>
           </div>
 
           {loading ? (
@@ -135,7 +166,7 @@ export const AdminSLAPage: React.FC = () => {
             rules.map((r, idx) => (
               <div
                 key={r.id}
-                className={`grid grid-cols-[180px_120px_1fr_1fr_80px] items-center px-6 py-4 border-b border-slate-100 last:border-0 ${
+                className={`grid grid-cols-[180px_120px_1fr_1fr_100px] items-center px-6 py-4 border-b border-slate-100 last:border-0 ${
                   idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                 }`}
               >
@@ -155,42 +186,79 @@ export const AdminSLAPage: React.FC = () => {
                 {/* Resolution time */}
                 <p className="text-sm text-slate-700 tabular-nums font-medium">{r.resolution_time_min} min</p>
 
-                {/* Delete */}
-                <button
-                  onClick={() => onDelete(r.id)}
-                  disabled={deletingId === r.id}
-                  className="text-red-600"
-                  title="Delete rule"
-                >
-                  {deletingId === r.id ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                    </svg>
-                  ) : (
+                {/* Actions: Edit + Delete */}
+                <div className="flex items-center gap-3">
+
+                  {/* Edit */}
+                  <button
+                    onClick={() => openEdit(r)}
+                    className="text-slate-400 hover:text-blue-600 transition-colors"
+                    title="Edit rule"
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5
+                           m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                  )}
-                </button>
+                  </button>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => onDelete(r.id)}
+                    disabled={deletingId === r.id}
+                    className="text-red-600 disabled:opacity-40"
+                    title="Delete rule"
+                  >
+                    {deletingId === r.id ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    )}
+                  </button>
+
+                </div>
               </div>
             ))
           )}
         </div>
       </div>
 
-      {/* Modal */}
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="New SLA Rule">
+      {/* Modal — shared for Create & Edit */}
+      <Modal open={showModal} onClose={onClose} title={isEditing ? 'Edit SLA Rule' : 'New SLA Rule'}>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-          <Sel label="Tier" error={errors.tier_id?.message} {...register('tier_id')}>
+
+          <Sel
+            label="Tier"
+            error={errors.tier_id?.message}
+            disabled={isEditing}
+            {...register('tier_id')}
+          >
             <option value="">Select tier…</option>
             {tiers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Sel>
-          <Sel label="Priority" error={errors.priority?.message} {...register('priority')}>
+
+          <Sel
+            label="Priority"
+            error={errors.priority?.message}
+            disabled={isEditing}
+            {...register('priority')}
+          >
             <option value="">Select priority…</option>
             {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
           </Sel>
+
+          {isEditing && (
+            <p className="text-xs text-slate-400 -mt-2">
+              Tier and priority are locked for existing rules.
+            </p>
+          )}
+
           <Input
             label="Response Time (minutes)"
             type="number" min={1}
@@ -203,10 +271,11 @@ export const AdminSLAPage: React.FC = () => {
             error={errors.resolution_time_min?.message}
             {...register('resolution_time_min')}
           />
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              onClick={() => { setShowCreate(false); reset(); }}
+              onClick={onClose}
               className="flex-1 border border-slate-200 text-slate-700 font-semibold text-sm py-2.5 rounded-xl hover:bg-slate-50 transition-colors"
             >
               Cancel
@@ -216,7 +285,7 @@ export const AdminSLAPage: React.FC = () => {
               disabled={submitting}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50"
             >
-              {submitting ? 'Saving…' : 'Save Rule'}
+              {submitting ? 'Saving…' : isEditing ? 'Update Rule' : 'Save Rule'}
             </button>
           </div>
         </form>

@@ -317,7 +317,7 @@ export const AdminTeamsPage: React.FC = () => {
                               </div>
                               {lead && (
                                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
-                                  <span>👑</span><span>{lead}</span>
+                                  <span>{lead}</span>
                                 </p>
                               )}
                             </div>

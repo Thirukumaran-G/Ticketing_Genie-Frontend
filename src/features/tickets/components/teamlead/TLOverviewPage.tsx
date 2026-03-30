@@ -11,23 +11,79 @@ import { AgentWorkloadItem, TLTicketDetail } from '../../../../types';
 import { ticketsService } from '../../services/ticketsService';
 import { StatusBadge, PriorityLabel } from '../shared/TicketBadges';
 
-// ── Workload bar ──────────────────────────────────────────────────────────────
 
-const WorkloadBar: React.FC<{ open: number; max: number }> = ({ open, max }) => {
-  const pct   = max > 0 ? Math.min((open / max) * 100, 100) : 0;
-  const color =
-    pct >= 80 ? 'bg-red-500' :
-    pct >= 60 ? 'bg-orange-500' :
-    pct >= 40 ? 'bg-yellow-500' : 'bg-green-500';
+
+// ── Edit Skill Modal ──────────────────────────────────────────────────────────
+
+const EditSkillModal: React.FC<{
+  agentName:    string;
+  currentSkill: string;
+  saving:       boolean;
+  onSave:       (text: string) => void;
+  onClose:      () => void;
+}> = ({ agentName, currentSkill, saving, onSave, onClose }) => {
+  const [text, setText] = useState(currentSkill);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 bg-blue-100 rounded-full h-1.5">
-        <div
-          className={clsx('h-1.5 rounded-full transition-all duration-500', color)}
-          style={{ width: `${pct}%` }}
-        />
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-slate-900 text-sm font-semibold">Edit Skill</h3>
+            <p className="text-slate-500 text-xs mt-0.5">{agentName}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 text-slate-500 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5">
+          <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block mb-2">
+            Skill Description
+          </label>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={4}
+            placeholder="e.g. Handles billing, refunds, and payment gateway issues..."
+            className="w-full text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          />
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(text.trim())}
+            disabled={saving || text.trim() === currentSkill}
+            className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
-      <span className="text-xs text-slate-600 w-8 text-right">{open}</span>
     </div>
   );
 };
@@ -35,11 +91,10 @@ const WorkloadBar: React.FC<{ open: number; max: number }> = ({ open, max }) => 
 // ── Agent card ────────────────────────────────────────────────────────────────
 
 const AgentCard: React.FC<{
-  agent:          AgentWorkloadItem;
-  max:            number;
-  onViewTickets:  () => void;
-}> = ({ agent, max, onViewTickets }) => {
-  const pct         = max > 0 ? Math.min((agent.open_tickets / max) * 100, 100) : 0;
+  agent:         AgentWorkloadItem;
+  onViewTickets: () => void;
+  onEditSkill:   () => void;
+}> = ({ agent, onViewTickets, onEditSkill }) => {
   const displayName = agent.full_name || `Agent ${String(agent.user_id).slice(0, 8)}`;
   const initials    = displayName
     .split(' ')
@@ -64,27 +119,37 @@ const AgentCard: React.FC<{
             )}
           </div>
         </div>
-        <div className={clsx(
-          'text-lg font-bold',
-          pct >= 80 ? 'text-red-400' : pct >= 60 ? 'text-orange-400' : 'text-slate-900',
-        )}>
+        <div className="text-lg font-bold text-slate-900">
           {agent.open_tickets}
           <span className="text-xs text-slate-600 font-normal ml-1">open</span>
         </div>
       </div>
 
-      <WorkloadBar open={agent.open_tickets} max={max} />
-
-      {agent.skills && (agent.skills as any).skill_text && (
-          <div className="mt-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
-              Skill
-            </p>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {(agent.skills as any).skill_text}
-            </p>
-          </div>
+      {/* Skill section */}
+      <div className="mt-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+            Skill
+          </p>
+          <button
+            onClick={onEditSkill}
+            title="Edit skill"
+            className="text-slate-400 hover:text-blue-600 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H9v-1.414A2 2 0 019.586 13z" />
+            </svg>
+          </button>
+        </div>
+        {(agent.skills as any)?.skill_text ? (
+          <p className="text-xs text-slate-600 leading-relaxed">
+            {(agent.skills as any).skill_text}
+          </p>
+        ) : (
+          <p className="text-xs text-slate-400 italic">No skill set — click pencil to add</p>
         )}
+      </div>
 
       <button
         onClick={onViewTickets}
@@ -157,7 +222,6 @@ const AgentTicketsModal: React.FC<{
                   onClick={onClose}
                   className="flex items-center gap-4 px-6 py-3.5 hover:bg-blue-50/50 transition-colors group"
                 >
-                  {/* Priority bar */}
                   <div className={clsx('w-1 h-8 rounded-full flex-shrink-0', {
                     'bg-red-500':    t.priority === 'P0',
                     'bg-orange-500': t.priority === 'P1',
@@ -165,22 +229,18 @@ const AgentTicketsModal: React.FC<{
                     'bg-blue-500':   t.priority === 'P3',
                     'bg-slate-300':  !t.priority,
                   })} />
-
                   <div className="flex-shrink-0 w-28">
                     <span className="text-xs font-mono text-slate-500">{t.ticket_number}</span>
                   </div>
-
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-slate-800 font-medium truncate group-hover:text-blue-700">
                       {t.title ?? '(No title)'}
                     </p>
                   </div>
-
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {t.priority && <PriorityLabel priority={t.priority} />}
                     <StatusBadge status={t.status} />
                   </div>
-
                   <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -200,23 +260,28 @@ export const TLOverviewPage: React.FC = () => {
   const dispatch    = useAppDispatch();
   const { teamOverview, isLoading } = useAppSelector((s) => s.tickets);
 
+  // Agent tickets modal
   const [selectedAgentId, setSelectedAgentId]         = useState<string | null>(null);
   const [agentTickets, setAgentTickets]               = useState<TLTicketDetail[]>([]);
   const [agentTicketsLoading, setAgentTicketsLoading] = useState(false);
 
+  // Edit skill modal
+  const [editSkillAgentId, setEditSkillAgentId]     = useState<string | null>(null);
+  const [skillSaving, setSkillSaving]               = useState(false);
+
   useEffect(() => { dispatch(fetchTeamOverview()); }, [dispatch]);
 
-  const agents     = teamOverview?.agents ?? [];
-  const maxTickets = Math.max(...agents.map((a) => a.open_tickets), 1);
-  const totalOpen  = agents.reduce((sum, a) => sum + a.open_tickets, 0);
-  const overloaded = agents.filter((a) => a.open_tickets > maxTickets * 0.8).length;
+  const agents       = teamOverview?.agents ?? [];
+  const assignedOpen = agents.reduce((sum, a) => sum + a.open_tickets, 0);
+  const unassigned   = teamOverview?.unassigned_count ?? 0;
+  const totalOpen    = assignedOpen + unassigned;
 
+  // Agent tickets modal
   const openAgentModal = async (agentUserId: string) => {
     setSelectedAgentId(agentUserId);
     setAgentTicketsLoading(true);
     try {
       const all = await ticketsService.getTLTickets();
-      // Filter to tickets assigned to this agent, excluding resolved/closed
       setAgentTickets(
         all.filter(
           (t: TLTicketDetail) =>
@@ -231,9 +296,30 @@ export const TLOverviewPage: React.FC = () => {
     }
   };
 
+  // Edit skill
+  const handleSaveSkill = async (skillText: string) => {
+    if (!editSkillAgentId) return;
+    setSkillSaving(true);
+    try {
+      await ticketsService.updateAgentSkill(editSkillAgentId, skillText);
+      toast.success('Skill updated');
+      dispatch(fetchTeamOverview());
+      setEditSkillAgentId(null);
+    } catch {
+      toast.error('Failed to update skill');
+    } finally {
+      setSkillSaving(false);
+    }
+  };
+
   const selectedAgentInfo = agents.find((a) => String(a.user_id) === selectedAgentId);
   const selectedAgentName = selectedAgentInfo?.full_name
     || (selectedAgentId ? `Agent ${selectedAgentId.slice(0, 8)}` : '');
+
+  const editSkillAgent = agents.find((a) => String(a.user_id) === editSkillAgentId);
+  const editSkillName  = editSkillAgent?.full_name
+    || (editSkillAgentId ? `Agent ${editSkillAgentId.slice(0, 8)}` : '');
+  const editSkillCurrent = (editSkillAgent?.skills as any)?.skill_text ?? '';
 
   return (
     <MainLayout navItems={tlNav} pageTitle="Team Overview">
@@ -245,6 +331,17 @@ export const TLOverviewPage: React.FC = () => {
           tickets={agentTickets}
           loading={agentTicketsLoading}
           onClose={() => { setSelectedAgentId(null); setAgentTickets([]); }}
+        />
+      )}
+
+      {/* Edit skill modal */}
+      {editSkillAgentId && (
+        <EditSkillModal
+          agentName={editSkillName}
+          currentSkill={editSkillCurrent}
+          saving={skillSaving}
+          onSave={handleSaveSkill}
+          onClose={() => setEditSkillAgentId(null)}
         />
       )}
 
@@ -275,11 +372,11 @@ export const TLOverviewPage: React.FC = () => {
         ) : (
           <>
             {/* Stats grid */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
               {[
-                { label: 'Agents',     value: agents.length,               color: 'text-slate-900' },
-                { label: 'Unassigned', value: teamOverview.unassigned_count, color: teamOverview.unassigned_count > 0 ? 'text-orange-400' : 'text-slate-900' },
-                { label: 'Total Open', value: totalOpen,                    color: 'text-slate-900' },
+                { label: 'Agents',       value: agents.length, color: 'text-slate-900' },
+                { label: 'Not Assigned', value: unassigned,    color: unassigned > 0 ? 'text-orange-400' : 'text-slate-900' },
+                { label: 'Total Open',   value: totalOpen,     color: 'text-slate-900' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-white border border-slate-200 rounded-xl p-5">
                   <p className="text-xs text-blue-600 uppercase tracking-widest font-semibold mb-1">{label}</p>
@@ -287,28 +384,6 @@ export const TLOverviewPage: React.FC = () => {
                 </div>
               ))}
             </div>
-
-            {/* Unassigned alert */}
-            {teamOverview.unassigned_count > 0 && (
-              <div className="mb-5 flex items-center gap-3 bg-orange-950/30 border border-orange-900/50 rounded-xl px-4 py-3">
-                <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse flex-shrink-0" />
-                <p className="text-sm text-orange-300 flex-1">
-                  <span className="font-semibold">
-                    {teamOverview.unassigned_count} unassigned ticket{teamOverview.unassigned_count !== 1 ? 's' : ''}
-                  </span>
-                  {' '}waiting in the queue — assign them to balance workload.
-                </p>
-                <Link
-                  to="/tickets/queue"
-                  className="text-xs text-orange-400 hover:text-orange-300 font-medium transition-colors flex-shrink-0 flex items-center gap-1"
-                >
-                  Go to queue
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
-              </div>
-            )}
 
             {/* Agent cards */}
             {agents.length === 0 ? (
@@ -324,8 +399,8 @@ export const TLOverviewPage: React.FC = () => {
                     <AgentCard
                       key={String(agent.user_id)}
                       agent={agent}
-                      max={maxTickets}
                       onViewTickets={() => openAgentModal(String(agent.user_id))}
+                      onEditSkill={() => setEditSkillAgentId(String(agent.user_id))}
                     />
                   ))}
               </div>
