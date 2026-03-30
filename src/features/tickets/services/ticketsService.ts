@@ -300,6 +300,15 @@ export const ticketsService = {
       .get<{ id: string; name: string; is_active: boolean }[]>('admin/products')
       .then((r) => r.data),
 
+  enhanceReply: (
+  ticketId: string,
+  draft:    string,
+  mode:     'reply' | 'internal' = 'reply',
+  ): Promise<{ enhanced_text: string; changes_summary: string }> =>
+  ticketClient
+    .post(`/agent/tickets/${ticketId}/enhance-reply`, { draft, mode })
+    .then((r) => r.data),
+
   // ── User name resolution ──────────────────────────────────────────────────
 
   resolveUserNames: async (userIds: string[]): Promise<Record<string, string>> => {
