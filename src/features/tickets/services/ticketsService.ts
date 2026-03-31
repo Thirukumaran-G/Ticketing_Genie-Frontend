@@ -176,6 +176,18 @@ export const ticketsService = {
       .get<TicketQueueItem[]>('/teamlead/queue')
       .then((r) => r.data),
 
+  sendReopenWarning: (
+  ticketId:       string,
+  templateId:     string,
+  customMessage?: string,
+) =>
+  ticketClient
+    .post(`/teamlead/tickets/${ticketId}/send-reopen-warning`, {
+      template_id:    templateId,
+      custom_message: customMessage,
+    })
+    .then((r) => r.data), 
+
   getTLTickets: (status?: string) =>
     ticketClient
       .get<TLTicketDetail[]>('/teamlead/tickets', {
@@ -300,6 +312,11 @@ export const ticketsService = {
     ticketClient
       .get<{ count: number }>('/notifications/unread-count')
       .then((r) => r.data.count),
+  
+  getSubscribedProducts: () =>
+    ticketClient
+      .get<{ id: string; name: string; code: string }[]>('/customer/products')
+      .then((r) => r.data),
 
   // ── Products list ─────────────────────────────────────────────────────────
 

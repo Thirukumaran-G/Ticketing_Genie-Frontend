@@ -17,11 +17,7 @@ const STATUSES = ['all', 'assigned', 'in_progress', 'on_hold', 'resolved', 'clos
 
 function isResponseBreached(t: TLTicketDetail): boolean {
   if (t.response_sla_breached_at) return true;
-  if (
-    t.sla_response_due &&
-    !t.first_response_at &&
-    isPast(new Date(t.sla_response_due))
-  ) return true;
+  if (t.sla_response_due && !t.first_response_at && isPast(new Date(t.sla_response_due))) return true;
   return false;
 }
 
@@ -42,16 +38,17 @@ function isAnyBreached(t: TLTicketDetail): boolean {
 // ── Badges ────────────────────────────────────────────────────────────────────
 
 const UnassignedBadge: React.FC = () => (
-  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-950/60 border border-orange-900/50 text-orange-400">
-    <span className="w-1 h-1 rounded-full bg-orange-400" />
+  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-orange-50 border border-orange-200 text-orange-600">
+    <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
     Unassigned
   </span>
 );
 
-const ResponseBreachBadge: React.FC = () => (
-  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-red-950/60 border border-red-900/50 text-red-400">
-    <span className="w-1 h-1 rounded-full bg-red-400 animate-pulse" />
-    Response SLA Breached
+// Moved to meta line — small dot + text, no pill background
+const ResponseBreachIndicator: React.FC = () => (
+  <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+    <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+    Response SLA breached
   </span>
 );
 
@@ -64,19 +61,19 @@ const StatsBar: React.FC<{ tickets: TLTicketDetail[] }> = ({ tickets }) => {
   const resolved   = tickets.filter(t => t.status === 'resolved').length;
 
   const stats = [
-    { label: 'Total',       value: tickets.length, color: 'text-slate-900' },
-    { label: 'Unassigned',  value: unassigned,      color: unassigned > 0 ? 'text-orange-400' : 'text-slate-900' },
-    { label: 'SLA Breach',  value: breached,        color: breached > 0   ? 'text-red-400'    : 'text-slate-900' },
-    { label: 'In Progress', value: inProgress,      color: 'text-blue-400' },
-    { label: 'Resolved',    value: resolved,        color: 'text-green-400' },
+    { label: 'Total',       value: tickets.length, color: 'text-slate-700' },
+    { label: 'Unassigned',  value: unassigned,      color: unassigned > 0 ? 'text-orange-500' : 'text-slate-700' },
+    { label: 'SLA Breach',  value: breached,        color: breached > 0   ? 'text-red-500'    : 'text-slate-700' },
+    { label: 'In Progress', value: inProgress,      color: 'text-blue-500' },
+    { label: 'Resolved',    value: resolved,        color: 'text-green-500' },
   ];
 
   return (
-    <div className="flex gap-3 mb-4 flex-wrap">
+    <div className="flex gap-2 mb-4 flex-wrap">
       {stats.map(({ label, value, color }) => (
-        <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 flex items-center gap-2.5">
-          <span className={clsx('text-lg font-bold', color)}>{value}</span>
-          <span className="text-xs text-slate-600">{label}</span>
+        <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 flex flex-col gap-0.5">
+          <span className={clsx('text-lg font-semibold', color)}>{value}</span>
+          <span className="text-xs text-slate-500">{label}</span>
         </div>
       ))}
     </div>
@@ -91,70 +88,82 @@ const Row: React.FC<{
 }> = ({ ticket, agentName }) => {
   const respBreached  = isResponseBreached(ticket);
   const resolBreached = isResolutionBreached(ticket);
-  const anyBreached   = respBreached || resolBreached;
   const isUnassigned  = !ticket.assigned_to;
 
   return (
     <Link to={`/tickets/teamlead/${ticket.id}`} className="group block">
       <div className={clsx(
-        'flex items-center gap-4 px-6 py-4 border-b border-slate-100 hover:bg-blue-50/60 transition-colors',
-        isUnassigned && 'bg-orange-950/10 hover:bg-orange-950/20',
-        anyBreached && !isUnassigned && 'bg-red-950/5 hover:bg-red-950/10',
+        'flex items-center gap-4 px-6 py-4 border-b border-slate-100 transition-colors',
+        // ✅ Only unassigned gets a tinted bg — no red tint for breach
+        isUnassigned
+          ? 'bg-orange-50/60 hover:bg-orange-50'
+          : 'hover:bg-blue-50/50',
       )}>
+
         {/* Priority bar */}
-        <div className={clsx('w-1 h-10 rounded-full flex-shrink-0', {
+        <div className={clsx('w-1 h-9 rounded-full flex-shrink-0', {
           'bg-red-500':    ticket.priority === 'P0',
-          'bg-orange-500': ticket.priority === 'P1',
-          'bg-yellow-500': ticket.priority === 'P2',
-          'bg-blue-500':   ticket.priority === 'P3',
-          'bg-slate-300':  !ticket.priority,
+          'bg-orange-400': ticket.priority === 'P1',
+          'bg-yellow-400': ticket.priority === 'P2',
+          'bg-blue-400':   ticket.priority === 'P3',
+          'bg-slate-200':  !ticket.priority,
         })} />
 
         {/* Ticket number */}
         <div className="flex-shrink-0 w-32">
-          <span className="text-xs font-mono text-slate-600">{ticket.ticket_number}</span>
+          <span className="text-xs font-mono text-slate-500">{ticket.ticket_number}</span>
         </div>
 
         {/* Title + meta */}
         <div className="flex-1 min-w-0">
+          {/* Title line — only resolution SLA breach pill stays here */}
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm text-slate-800 font-medium truncate group-hover:text-blue-700">
+            <p className="text-sm text-slate-800 font-medium truncate group-hover:text-blue-700 transition-colors">
               {ticket.title ?? '(No title)'}
             </p>
             {resolBreached && <SLABreachPill />}
-            {respBreached  && <ResponseBreachBadge />}
             {isUnassigned  && <UnassignedBadge />}
           </div>
-          <p className="text-xs text-slate-600 mt-0.5">
+
+          {/* Meta line — agent · date · response breach indicator (if any) */}
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             {isUnassigned
-              ? <span className="text-orange-400/70">No agent assigned</span>
-              : <span>{agentName ?? `${ticket.assigned_to!.slice(0, 8)}…`}</span>
+              ? <span className="text-xs text-orange-400">No agent assigned</span>
+              : <span className="text-xs text-slate-500">{agentName ?? `${ticket.assigned_to!.slice(0, 8)}…`}</span>
             }
-            {' · '}{format(new Date(ticket.created_at), 'MMM d, yyyy')}
-          </p>
+            <span className="text-xs text-slate-300">·</span>
+            <span className="text-xs text-slate-500">{format(new Date(ticket.created_at), 'MMM d, yyyy')}</span>
+            {/* ✅ Response breach moved here — subtle dot + text, no red row bg */}
+            {respBreached && (
+              <>
+                <span className="text-xs text-slate-300">·</span>
+                <ResponseBreachIndicator />
+              </>
+            )}
+          </div>
         </div>
 
         {/* Severity */}
-        <div className="flex-shrink-0 flex items-center gap-1.5">
+        <div className="flex-shrink-0 w-24 flex items-center gap-1.5">
           {ticket.severity && <SeverityDot severity={ticket.severity} />}
-          <span className="text-xs text-slate-600 capitalize">{ticket.severity ?? '—'}</span>
+          <span className="text-xs text-slate-500 capitalize">{ticket.severity ?? '—'}</span>
         </div>
 
         {/* Priority */}
         <div className="flex-shrink-0 w-10 text-center">
-          {ticket.priority
-            ? <PriorityLabel priority={ticket.priority} />
-            : <span className="text-slate-600 text-xs">—</span>
-          }
-        </div>
+            {ticket.priority
+              ? <PriorityLabel priority={ticket.priority} />
+              : <span className="text-slate-400 text-xs">—</span>
+            }
+          </div>
 
         {/* Status */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 w-24">
           <StatusBadge status={ticket.status} />
         </div>
 
         {/* Chevron */}
-        <div className="flex-shrink-0 text-slate-400 group-hover:text-blue-600 transition-colors">
+        <div className="flex-shrink-0 text-slate-300 group-hover:text-blue-500 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
@@ -169,7 +178,7 @@ const Row: React.FC<{
 export const TLTicketsPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { tlTickets, teamOverview, isLoading } = useAppSelector((s) => s.tickets);
-  const [filter, setFilter]                 = useState('all');
+  const [filter, setFilter]                     = useState('all');
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
 
   useEffect(() => {
@@ -177,7 +186,6 @@ export const TLTicketsPage: React.FC = () => {
     dispatch(fetchTeamOverview());
   }, [dispatch, filter]);
 
-  // user_id → full_name lookup from teamOverview agents
   const agentNameMap = React.useMemo(() => {
     const map: Record<string, string> = {};
     for (const a of teamOverview?.agents ?? []) {
@@ -200,16 +208,16 @@ export const TLTicketsPage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Team Tickets</h2>
-            <p className="text-slate-600 text-sm mt-1">
+            <h2 className="text-xl font-semibold text-slate-900">Team tickets</h2>
+            <p className="text-slate-500 text-sm mt-1">
               {tlTickets.length} tickets
               {unassignedCount > 0 && (
-                <span className="ml-2 text-orange-400 font-medium">
+                <span className="ml-2 text-orange-500 font-medium">
                   · {unassignedCount} unassigned
                 </span>
               )}
               {responseBreachCount > 0 && (
-                <span className="ml-2 text-red-400 font-medium">
+                <span className="ml-2 text-red-500 font-medium">
                   · {responseBreachCount} response SLA breached
                 </span>
               )}
@@ -220,13 +228,16 @@ export const TLTicketsPage: React.FC = () => {
             <button
               onClick={() => setShowUnassignedOnly(v => !v)}
               className={clsx(
-                'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all',
+                'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all',
                 showUnassignedOnly
-                  ? 'bg-orange-950/40 border-orange-700 text-orange-300'
-                  : 'bg-slate-50 border-slate-300 text-slate-500 hover:text-slate-900 hover:border-blue-300',
+                  ? 'bg-orange-50 border-orange-300 text-orange-600'
+                  : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300',
               )}
             >
-              <span className={clsx('w-2 h-2 rounded-full', showUnassignedOnly ? 'bg-orange-400 animate-pulse' : 'bg-slate-400')} />
+              <span className={clsx(
+                'w-1.5 h-1.5 rounded-full',
+                showUnassignedOnly ? 'bg-orange-400 animate-pulse' : 'bg-slate-300',
+              )} />
               {showUnassignedOnly ? 'Showing unassigned only' : `Show unassigned (${unassignedCount})`}
             </button>
           )}
@@ -242,8 +253,8 @@ export const TLTicketsPage: React.FC = () => {
               key={s}
               onClick={() => { setFilter(s); setShowUnassignedOnly(false); }}
               className={clsx(
-                'px-3 py-1.5 rounded-md text-xs font-semibold transition-all capitalize',
-                filter === s ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-900',
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-all capitalize',
+                filter === s ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800',
               )}
             >
               {s.replace(/_/g, ' ')}
@@ -252,14 +263,15 @@ export const TLTicketsPage: React.FC = () => {
         </div>
 
         {/* Table */}
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-200 bg-blue-50/50">
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          {/* Column headers */}
+          <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/80">
             <div className="w-1 flex-shrink-0" />
             <div className="flex-shrink-0 w-32 text-xs font-semibold text-blue-600 uppercase tracking-widest">Ticket #</div>
             <div className="flex-1 text-xs font-semibold text-blue-600 uppercase tracking-widest">Issue</div>
-            <div className="flex-shrink-0 text-xs font-semibold text-blue-600 uppercase tracking-widest">Severity</div>
-            <div className="flex-shrink-0 w-10 text-center text-xs font-semibold text-blue-600 uppercase tracking-widest">Pri</div>
-            <div className="flex-shrink-0 text-xs font-semibold text-blue-600 uppercase tracking-widest">Status</div>
+            <div className="flex-shrink-0 w-24 text-xs font-semibold text-blue-600 uppercase tracking-widest">Severity</div>
+            <div className="flex-shrink-0 w-10 text-center text-xs font-semibold text-blue-600 uppercase tracking-widest">Priority</div>
+            <div className="flex-shrink-0 w-24 text-xs font-semibold text-blue-600 uppercase tracking-widest">Status</div>
             <div className="w-4" />
           </div>
 
@@ -267,7 +279,7 @@ export const TLTicketsPage: React.FC = () => {
             <PageLoader />
           ) : displayed.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-slate-500 text-sm">
+              <p className="text-slate-400 text-sm">
                 {showUnassignedOnly ? 'No unassigned tickets' : 'No tickets found'}
               </p>
             </div>
@@ -281,6 +293,7 @@ export const TLTicketsPage: React.FC = () => {
             ))
           )}
         </div>
+
       </div>
     </MainLayout>
   );

@@ -10,7 +10,6 @@ import { adminTicketService } from '../services/adminTicketService';
 import { adminNav } from './adminNav';
 import { TeamResponse, AdminUserResponse, ProductResponse } from '../../../types';
 
-// ─── Team schema ──────────────────────────────────────────────────────────────
 const teamSchema = z.object({
   name:         z.string().min(2, 'Min 2 characters'),
   product_id:   z.string().min(1, 'Select product'),
@@ -18,7 +17,6 @@ const teamSchema = z.object({
 });
 type TeamForm = z.infer<typeof teamSchema>;
 
-// ─── Per-member detail (step 2) ───────────────────────────────────────────────
 interface MemberDetail {
   user_id:    string;
   experience: number | '';
@@ -27,7 +25,6 @@ interface MemberDetail {
   skillErr:   string;
 }
 
-// ─── Sel component ────────────────────────────────────────────────────────────
 const Sel: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; error?: string }> = ({
   label, error, children, ...props
 }) => (
@@ -41,19 +38,13 @@ const Sel: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: str
   </div>
 );
 
-// ─── SkillCell — inline expand/collapse ───────────────────────────────────────
 const SKILL_PREVIEW_LEN = 60;
-
 const SkillCell: React.FC<{ text: string }> = ({ text }) => {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > SKILL_PREVIEW_LEN;
-
   return (
     <p className="text-xs text-slate-500 leading-snug">
-      {isLong && !expanded
-        ? <>{text.slice(0, SKILL_PREVIEW_LEN)}…</>
-        : text
-      }
+      {isLong && !expanded ? <>{text.slice(0, SKILL_PREVIEW_LEN)}…</> : text}
       {isLong && (
         <button
           type="button"
@@ -67,7 +58,6 @@ const SkillCell: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export const AdminTeamsPage: React.FC = () => {
   const [teams,            setTeams]            = useState<TeamResponse[]>([]);
   const [products,         setProducts]         = useState<ProductResponse[]>([]);
@@ -79,9 +69,9 @@ export const AdminTeamsPage: React.FC = () => {
   const [submitting,       setSubmitting]       = useState(false);
   const [deletingId,       setDeletingId]       = useState<string | null>(null);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [removingLeadId,   setRemovingLeadId]   = useState<string | null>(null);
   const [expandedTeams,    setExpandedTeams]    = useState<Set<string>>(new Set());
 
-  // ── Wizard state ─────────────────────────────────────────────────────────
   const [step,           setStep]           = useState<1 | 2>(1);
   const [selectedLead,   setSelectedLead]   = useState('');
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
@@ -129,20 +119,40 @@ export const AdminTeamsPage: React.FC = () => {
     return [...known, ...unknown];
   }, [grouped, products]);
 
+  // All team_lead_ids currently assigned across ALL active teams
+  const globallyAssignedLeadIds = useMemo(() => {
+    const ids = new Set<string>();
+    teams.forEach(t => { if (t.team_lead_id) ids.add(t.team_lead_id); });
+    return ids;
+  }, [teams]);
+
+  // For the add-member modal: leads assigned to a DIFFERENT team (not the current one)
+  const unavailableLeadIds = useMemo(() => {
+    const ids = new Set(globallyAssignedLeadIds);
+    if (selectedTeam?.team_lead_id) ids.delete(selectedTeam.team_lead_id);
+    return ids;
+  }, [globallyAssignedLeadIds, selectedTeam]);
+
   const getProduct  = (pid: string) => products.find(p => p.id === pid);
   const getUserName = (uid: string) => {
     const u = users.find(u => u.id === uid);
     return u ? (u.full_name ?? u.email) : uid.slice(0, 8) + '…';
   };
-  const getUser = (uid: string) => users.find(u => u.id === uid);
+  const getUser     = (uid: string) => users.find(u => u.id === uid);
+  const getTeamName = (leadId: string) => teams.find(t => t.team_lead_id === leadId)?.name ?? 'another team';
 
   const teamLeads     = users.filter(u => u.role === 'team_lead');
   const agents        = users.filter(u => u.role === 'agent');
   const totalSelected = (selectedLead ? 1 : 0) + selectedAgents.length;
 
-  // ─── Handlers ────────────────────────────────────────────────────────────
-  const openCreate    = () => { teamForm.reset(); setShowCreate(true); };
-  const closeCreate   = () => { setShowCreate(false); teamForm.reset(); };
+  const availableLeads = teamLeads.filter(u =>
+    u.id !== selectedTeam?.team_lead_id && !unavailableLeadIds.has(u.id)
+  );
+  const allLeadsTaken = teamLeads.length > 0 && availableLeads.length === 0;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const openCreate  = () => { teamForm.reset(); setShowCreate(true); };
+  const closeCreate = () => { setShowCreate(false); teamForm.reset(); };
 
   const openAddMember = (team: TeamResponse) => {
     setSelectedTeam(team);
@@ -193,7 +203,7 @@ export const AdminTeamsPage: React.FC = () => {
   const onSubmitMembers = async () => {
     let hasErr = false;
     const validated = memberDetails.map(m => {
-      const expErr   = m.experience === '' || Number(m.experience) < 0 ? 'Required' : '';
+      const expErr   = m.experience === '' || Number(m.experience) < 0 ? 'Required (0 or more)' : '';
       const skillErr = m.skill_text.trim().length < 3 ? 'Required (min 3 chars)' : '';
       if (expErr || skillErr) hasErr = true;
       return { ...m, expErr, skillErr };
@@ -201,22 +211,33 @@ export const AdminTeamsPage: React.FC = () => {
     setMemberDetails(validated);
     if (hasErr || !selectedTeam) return;
 
-    try {
-      setSubmitting(true);
-      await Promise.all(
-        validated.map(m =>
-          adminTicketService.addMember(selectedTeam.id, {
-            user_id:    m.user_id,
-            experience: Number(m.experience),
-            skill_text: m.skill_text.trim(),
-          })
-        )
-      );
-      toast.success(`${validated.length} member${validated.length > 1 ? 's' : ''} added`);
-      closeMember();
-      load();
-    } catch { toast.error('Failed to add member(s)'); }
-    finally { setSubmitting(false); }
+    setSubmitting(true);
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const m of validated) {
+      try {
+        await adminTicketService.addMember(selectedTeam.id, {
+          user_id:    m.user_id,
+          experience: Number(m.experience),
+          skill_text: m.skill_text.trim(),
+        });
+        successCount++;
+      } catch (err: any) {
+        const name = getUserName(m.user_id);
+        if (err?.response?.status === 409) {
+          errors.push(`${name} is already in this team`);
+        } else {
+          errors.push(`${name}: unexpected error`);
+        }
+      }
+    }
+
+    setSubmitting(false);
+    if (successCount > 0) toast.success(`${successCount} member${successCount > 1 ? 's' : ''} added`);
+    if (errors.length > 0) errors.forEach(e => toast.error(e));
+    if (errors.length === 0) closeMember();
+    load();
   };
 
   const onCreate = async (d: TeamForm) => {
@@ -225,33 +246,58 @@ export const AdminTeamsPage: React.FC = () => {
       await adminTicketService.createTeam(d);
       toast.success('Team created');
       closeCreate(); load();
-    } catch { toast.error('Failed to create team'); }
-    finally { setSubmitting(false); }
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        toast.error(err?.response?.data?.detail ?? 'This team lead is already assigned to another team.');
+      } else {
+        toast.error('Failed to create team');
+      }
+    } finally { setSubmitting(false); }
   };
 
-  const onDeleteTeam = async (t: TeamResponse) => {
-    if (!confirm(`Permanently delete team "${t.name}"?`)) return;
+  const onDeactivateTeam = async (t: TeamResponse) => {
+    if (!confirm(`Deactivate team "${t.name}"? It will be hidden but not permanently removed.`)) return;
     try {
       setDeletingId(t.id);
       await adminTicketService.deactivateTeam(t.id);
-      toast.success('Team deleted');
+      toast.success('Team deactivated');
       load();
-    } catch { toast.error('Failed'); }
+    } catch { toast.error('Failed to deactivate team'); }
     finally { setDeletingId(null); }
   };
 
+  const onRemoveLead = async (team: TeamResponse) => {
+    if (!confirm(`Remove the lead from team "${team.name}"? The lead slot will be empty.`)) return;
+    try {
+      setRemovingLeadId(team.id);
+      await adminTicketService.removeTeamLead(team.id);
+      toast.success('Team lead removed');
+      load();
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        toast.error('This team has no lead assigned.');
+      } else {
+        toast.error('Failed to remove team lead');
+      }
+    } finally { setRemovingLeadId(null); }
+  };
+
   const onDeleteMember = async (teamId: string, memberId: string, memberName: string) => {
-    if (!confirm(`Permanently remove "${memberName}" from this team?`)) return;
+    if (!confirm(`Remove "${memberName}" from this team?`)) return;
     try {
       setDeletingMemberId(memberId);
       await adminTicketService.removeMember(teamId, memberId);
       toast.success('Member removed');
       load();
-    } catch { toast.error('Failed to remove member'); }
-    finally { setDeletingMemberId(null); }
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        toast.error('Member does not belong to this team.');
+      } else {
+        toast.error('Failed to remove member');
+      }
+    } finally { setDeletingMemberId(null); }
   };
 
-  // ─── JSX ─────────────────────────────────────────────────────────────────
   return (
     <MainLayout navItems={adminNav} pageTitle="Teams">
       <div className="p-6 space-y-6">
@@ -312,13 +358,27 @@ export const AdminTeamsPage: React.FC = () => {
                               <div className="flex items-center gap-2">
                                 <p className="text-sm font-bold text-slate-900">{team.name}</p>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ${
-                                  team.is_active ? 'bg-green-100 text-green-700 ring-green-200' : 'bg-slate-100 text-slate-500 ring-slate-200'
+                                  team.is_active
+                                    ? 'bg-green-100 text-green-700 ring-green-200'
+                                    : 'bg-slate-100 text-slate-500 ring-slate-200'
                                 }`}>{team.is_active ? 'Active' : 'Inactive'}</span>
                               </div>
-                              {lead && (
-                                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
-                                  <span>{lead}</span>
-                                </p>
+
+                              {/* Lead row with remove button */}
+                              {lead ? (
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <p className="text-xs text-slate-400">{lead}</p>
+                                  <button
+                                    onClick={() => onRemoveLead(team)}
+                                    disabled={removingLeadId === team.id}
+                                    title="Remove lead from team"
+                                    className="text-[10px] font-semibold text-red-400 hover:text-red-600 transition-colors disabled:opacity-40 leading-none"
+                                  >
+                                    {removingLeadId === team.id ? '…' : '✕ remove lead'}
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-300 mt-0.5 italic">No lead assigned</p>
                               )}
                             </div>
 
@@ -343,8 +403,9 @@ export const AdminTeamsPage: React.FC = () => {
                               Add Member
                             </button>
 
-                            <button onClick={() => onDeleteTeam(team)} disabled={deletingId === team.id}
-                              className="p-1.5 rounded-lg text-red-500 bg-red-50 border border-red-200 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all disabled:opacity-40" title="Delete team">
+                            <button onClick={() => onDeactivateTeam(team)} disabled={deletingId === team.id}
+                              className="p-1.5 rounded-lg text-red-500 bg-red-50 border border-red-200 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all disabled:opacity-40"
+                              title="Deactivate team">
                               {deletingId === team.id ? (
                                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -374,13 +435,9 @@ export const AdminTeamsPage: React.FC = () => {
                                     return (
                                       <div key={m.id ?? m.user_id}
                                         className="flex items-start gap-3 bg-white border border-slate-200 rounded-xl p-3">
-
-                                        {/* Avatar */}
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
                                           isLead ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                                         }`}>{name.charAt(0).toUpperCase()}</div>
-
-                                        {/* Info */}
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-1.5">
                                             <p className="text-xs font-bold text-slate-900 truncate">{name}</p>
@@ -388,10 +445,8 @@ export const AdminTeamsPage: React.FC = () => {
                                             {user?.role && !isLead && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 ring-1 ring-blue-200 flex-shrink-0 capitalize">{user.role}</span>}
                                           </div>
                                           <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
-
-                                          {/* Experience + Skill — skill fully readable via SkillCell */}
                                           {(m.experience != null || skillText) && (
-                                            <div className="mt-1 space-y-0">
+                                            <div className="mt-1">
                                               {m.experience != null && (
                                                 <p className="text-xs text-slate-500 font-medium">
                                                   {m.experience} yr{m.experience !== 1 ? 's' : ''} exp
@@ -401,11 +456,10 @@ export const AdminTeamsPage: React.FC = () => {
                                             </div>
                                           )}
                                         </div>
-
-                                        {/* Delete */}
                                         <button onClick={() => onDeleteMember(team.id, m.id, name)}
                                           disabled={deletingMemberId === m.id}
-                                          className="p-1 rounded-lg text-red-400 hover:bg-red-600 hover:text-white transition-all disabled:opacity-40 flex-shrink-0" title="Remove member">
+                                          className="p-1 rounded-lg text-red-400 hover:bg-red-600 hover:text-white transition-all disabled:opacity-40 flex-shrink-0"
+                                          title="Remove member">
                                           {deletingMemberId === m.id ? (
                                             <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -445,10 +499,19 @@ export const AdminTeamsPage: React.FC = () => {
             <option value="">Select product…</option>
             {products.filter(p => p.is_active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Sel>
+
           <Sel label="Team Lead (optional)" {...teamForm.register('team_lead_id')}>
             <option value="">None</option>
-            {teamLeads.map(u => <option key={u.id} value={u.id}>{u.full_name ?? u.email}</option>)}
+            {teamLeads.map(u => {
+              const taken = globallyAssignedLeadIds.has(u.id);
+              return (
+                <option key={u.id} value={u.id} disabled={taken}>
+                  {u.full_name ?? u.email}{taken ? ' (already leading a team)' : ''}
+                </option>
+              );
+            })}
           </Sel>
+
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={closeCreate}
               className="flex-1 border border-slate-200 text-slate-700 font-semibold text-sm py-2.5 rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
@@ -486,38 +549,75 @@ export const AdminTeamsPage: React.FC = () => {
           })}
         </div>
 
-        {/* ── STEP 1: Select people ── */}
+        {/* ── STEP 1 ── */}
         {step === 1 && (
           <div className="space-y-5">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">
                 Team Lead <span className="normal-case font-normal text-slate-400">(pick one)</span>
               </p>
+
+              {allLeadsTaken && (
+                <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3">
+                  <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-amber-700 font-medium leading-snug">
+                    All team leads are currently assigned to other teams. You can still add agents below,
+                    or create a new team lead user first.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 {teamLeads.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No team leads available</p>
+                  <p className="text-xs text-slate-400 italic">No team leads exist — create a team lead user first</p>
                 ) : teamLeads.map(u => {
-                  const sel        = selectedLead === u.id;
-                  const isAssigned = selectedTeam?.team_lead_id === u.id;
+                  const isThisTeamsLead     = selectedTeam?.team_lead_id === u.id;
+                  const isAssignedElsewhere = unavailableLeadIds.has(u.id);
+                  const isDisabled          = isThisTeamsLead || isAssignedElsewhere;
+                  const sel                 = selectedLead === u.id;
+                  const assignedTeamName    = isAssignedElsewhere ? getTeamName(u.id) : '';
+
                   return (
                     <label key={u.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${
-                      isAssigned
-                        ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+                      isDisabled
+                        ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
                         : sel
                         ? 'border-amber-400 bg-amber-50 cursor-pointer'
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
                     }`}>
-                      <input type="radio" checked={sel} disabled={isAssigned} onChange={() => setSelectedLead(sel ? '' : u.id)} className="accent-amber-500 flex-shrink-0" />
-                      <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      <input
+                        type="radio"
+                        checked={sel}
+                        disabled={isDisabled}
+                        onChange={() => setSelectedLead(sel ? '' : u.id)}
+                        className="accent-amber-500 flex-shrink-0"
+                      />
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                        isDisabled ? 'bg-slate-200 text-slate-400' : 'bg-amber-100 text-amber-700'
+                      }`}>
                         {(u.full_name ?? u.email).charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 overflow-hidden">
-                        <p className="text-sm font-semibold text-slate-900">{u.full_name ?? u.email}</p>
+                        <p className={`text-sm font-semibold ${isDisabled ? 'text-slate-400' : 'text-slate-900'}`}>
+                          {u.full_name ?? u.email}
+                        </p>
                         <p className="text-xs text-slate-400 break-all">{u.email}</p>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 ring-1 ring-amber-200 flex-shrink-0">Lead</span>
-                      {isAssigned && (
-                        <span className="text-[10px] font-semibold text-slate-400 flex-shrink-0">Already assigned</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 flex-shrink-0 ${
+                        isDisabled
+                          ? 'bg-slate-100 text-slate-400 ring-slate-200'
+                          : 'bg-amber-100 text-amber-700 ring-amber-200'
+                      }`}>Lead</span>
+                      {isThisTeamsLead && (
+                        <span className="text-[10px] font-semibold text-slate-400 flex-shrink-0">Already lead here</span>
+                      )}
+                      {isAssignedElsewhere && (
+                        <span className="text-[10px] font-semibold text-slate-400 flex-shrink-0 truncate max-w-[120px]"
+                          title={`Leading: ${assignedTeamName}`}>
+                          Leading: {assignedTeamName}
+                        </span>
                       )}
                     </label>
                   );
@@ -544,20 +644,29 @@ export const AdminTeamsPage: React.FC = () => {
                   return (
                     <label key={u.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${
                       isAssigned
-                        ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+                        ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
                         : checked
                         ? 'border-blue-400 bg-blue-50 cursor-pointer'
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
                     }`}>
-                      <input type="checkbox" checked={checked} disabled={isAssigned} onChange={() => toggleAgent(u.id)} className="accent-blue-500 w-4 h-4 flex-shrink-0" />
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      <input type="checkbox" checked={checked} disabled={isAssigned} onChange={() => toggleAgent(u.id)}
+                        className="accent-blue-500 w-4 h-4 flex-shrink-0" />
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                        isAssigned ? 'bg-slate-200 text-slate-400' : 'bg-blue-100 text-blue-700'
+                      }`}>
                         {(u.full_name ?? u.email).charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 overflow-hidden">
-                        <p className="text-sm font-semibold text-slate-900">{u.full_name ?? u.email}</p>
+                        <p className={`text-sm font-semibold ${isAssigned ? 'text-slate-400' : 'text-slate-900'}`}>
+                          {u.full_name ?? u.email}
+                        </p>
                         <p className="text-xs text-slate-400 break-all">{u.email}</p>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 ring-1 ring-blue-200 flex-shrink-0">Agent</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 flex-shrink-0 ${
+                        isAssigned
+                          ? 'bg-slate-100 text-slate-400 ring-slate-200'
+                          : 'bg-blue-100 text-blue-700 ring-blue-200'
+                      }`}>Agent</span>
                       {isAssigned && (
                         <span className="text-[10px] font-semibold text-slate-400 flex-shrink-0">Already in team</span>
                       )}
@@ -589,7 +698,7 @@ export const AdminTeamsPage: React.FC = () => {
           </div>
         )}
 
-        {/* ── STEP 2: Individual experience + skill per person ── */}
+        {/* ── STEP 2 ── */}
         {step === 2 && (
           <div className="space-y-5">
             <p className="text-xs text-slate-500">

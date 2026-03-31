@@ -9,6 +9,7 @@ import { PageLoader } from '../../../../components/ui/index';
 import { StatusBadge, SeverityDot, PriorityLabel, SLABreachPill } from '../shared/TicketBadges';
 import { AgentSLAPanel, BreachJustification } from '../shared/SLAPanel';
 import { ApologyModal } from './ApologyModal';
+import { ReopenWarningModal } from './ReopenWarningModal';
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
 import { fetchTLTicket, manualAssignThunk, fetchTeamOverview, fetchProducts } from '../../slices/ticketsSlice';
 import { ticketsService } from '../../services/ticketsService';
@@ -27,6 +28,7 @@ type ThreadEntry = { kind: 'message'; data: ConversationItem } | { kind: 'attach
 interface ThreadData { conversations: ConversationItem[]; attachments: AttachmentItem[]; }
 
 const CUSTOMER_SUPPORT_TEAM_NAME = 'Customer Support Team';
+const REOPEN_WARNING_THRESHOLD = 3;
 
 const IMAGE_TYPES = new Set(['image/jpeg','image/png','image/gif','image/webp','image/svg+xml']);
 
@@ -46,36 +48,28 @@ function fileIcon(mime: string | null) {
   return '📄';
 }
 
-// ✅ TL can only close tickets — not change to any other status
-const TL_STATUSES = [
-  { value: 'closed', label: 'Closed' },
-];
+const TL_STATUSES = [{ value: 'closed', label: 'Closed' }];
 
 function getInitials(name: string) { return name.split(' ').map((n) => n[0]).join('').slice(0,2).toUpperCase(); }
 
-// ── SLA status badge ──────────────────────────────────────────────────────────
 const SLAStatusBadge: React.FC<{ type: 'met' | 'breached' | 'overdue' }> = ({ type }) => {
   if (type === 'met') return (
     <span className="inline-flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-semibold">
-      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-      Met
+      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>Met
     </span>
   );
   if (type === 'breached') return (
     <span className="inline-flex items-center gap-1 text-[10px] bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold">
-      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
-      Breached
+      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>Breached
     </span>
   );
   return (
     <span className="inline-flex items-center gap-1 text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded font-semibold">
-      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-      Overdue
+      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Overdue
     </span>
   );
 };
 
-// ── ImageModal ─────────────────────────────────────────────────────────────────
 const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = ({ src, alt, onClose }) => {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -94,49 +88,28 @@ const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = 
   );
 };
 
-// ── AuthImage ─────────────────────────────────────────────────────────────────
 const AuthImage: React.FC<{
-  ticketId: string;
-  attachmentId: string;
-  alt: string;
-  className?: string;
-  onClick?: (signedUrl: string) => void;
+  ticketId: string; attachmentId: string; alt: string; className?: string; onClick?: (signedUrl: string) => void;
 }> = ({ ticketId, attachmentId, alt, className, onClick }) => {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
-    ticketsService
-      .getTLAttachmentSignedUrl(ticketId, attachmentId)
+    ticketsService.getTLAttachmentSignedUrl(ticketId, attachmentId)
       .then((url) => { if (!cancelled) setSrc(url); })
       .catch(() => { if (!cancelled) setErr(true); });
     return () => { cancelled = true; };
   }, [ticketId, attachmentId]);
-
-  if (err) return (
-    <div className={clsx('flex items-center justify-center text-xs text-[#44546f] bg-[#f4f5f7] rounded', className)}>
-      Failed
-    </div>
-  );
-  if (!src) return (
-    <div className={clsx('flex items-center justify-center bg-[#f4f5f7] rounded', className)}>
-      <div className="w-4 h-4 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-  return (
-    <img src={src} alt={alt} className={clsx('object-cover cursor-zoom-in', className)} onClick={() => onClick?.(src)} />
-  );
+  if (err) return <div className={clsx('flex items-center justify-center text-xs text-[#44546f] bg-[#f4f5f7] rounded', className)}>Failed</div>;
+  if (!src) return <div className={clsx('flex items-center justify-center bg-[#f4f5f7] rounded', className)}><div className="w-4 h-4 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" /></div>;
+  return <img src={src} alt={alt} className={clsx('object-cover cursor-zoom-in', className)} onClick={() => onClick?.(src)} />;
 };
 
-// ── openAttachment ────────────────────────────────────────────────────────────
 const openAttachment = async (ticketId: string, attachmentId: string) => {
   try {
     const url = await ticketsService.getTLAttachmentSignedUrl(ticketId, attachmentId);
     window.open(url, '_blank', 'noreferrer');
-  } catch {
-    toast.error('Failed to open attachment');
-  }
+  } catch { toast.error('Failed to open attachment'); }
 };
 
 const KV: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -156,17 +129,17 @@ const TextBubble: React.FC<{ item: ConversationItem; authorNames: Record<string,
   else if (isAgent) { displayName = resolvedName ? `${resolvedName} (agent)` : 'Agent'; initials = resolvedName ? getInitials(resolvedName) : 'A'; bgColor = isInternal ? 'bg-[#ff991f] text-white' : 'bg-[#0052cc] text-white'; }
   else { displayName = customerName; initials = getInitials(customerName); bgColor = 'bg-[#dfe1e6] text-[#44546f]'; }
 
-  const isBreachNote = item.content.startsWith('[BREACH_JUSTIFICATION:');
-  const isApologyNote = item.content.startsWith('[APOLOGY_SENT]');
-  const isBulkNote = item.content.startsWith('[BULK_');
+  const isBreachNote   = item.content.startsWith('[BREACH_JUSTIFICATION:');
+  const isApologyNote  = item.content.startsWith('[APOLOGY_SENT]');
+  const isBulkNote     = item.content.startsWith('[BULK_');
   const isUnassignNote = item.content.startsWith('[Unassigned]');
-  const isRerouteNote = item.content.startsWith('[REROUTED]');
+  const isRerouteNote  = item.content.startsWith('[REROUTED]');
   const getSystemBadge = () => {
-    if (isBreachNote) return { label: 'Breach justification', color: 'text-purple-600 bg-purple-50 border-purple-200' };
-    if (isApologyNote) return { label: 'Apology sent', color: 'text-pink-600 bg-pink-50 border-pink-200' };
-    if (isBulkNote) return { label: 'Bulk action', color: 'text-teal-600 bg-teal-50 border-teal-200' };
-    if (isUnassignNote) return { label: 'Unassigned', color: 'text-orange-600 bg-orange-50 border-orange-200' };
-    if (isRerouteNote) return { label: 'Ticket rerouted', color: 'text-blue-600 bg-blue-50 border-blue-200' };
+    if (isBreachNote)   return { label: 'Breach justification', color: 'text-purple-600 bg-purple-50 border-purple-200' };
+    if (isApologyNote)  return { label: 'Apology sent',         color: 'text-pink-600 bg-pink-50 border-pink-200' };
+    if (isBulkNote)     return { label: 'Bulk action',          color: 'text-teal-600 bg-teal-50 border-teal-200' };
+    if (isUnassignNote) return { label: 'Unassigned',           color: 'text-orange-600 bg-orange-50 border-orange-200' };
+    if (isRerouteNote)  return { label: 'Ticket rerouted',      color: 'text-blue-600 bg-blue-50 border-blue-200' };
     return null;
   };
   const badge = getSystemBadge();
@@ -190,7 +163,6 @@ const TextBubble: React.FC<{ item: ConversationItem; authorNames: Record<string,
 const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; customerName: string }> = ({ att, ticketId, customerName }) => {
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const isImg = IMAGE_TYPES.has(att.mime_type ?? '');
-
   return (
     <div className="flex gap-3 py-4">
       {modalSrc && <ImageModal src={modalSrc} alt={att.file_name} onClose={() => setModalSrc(null)} />}
@@ -228,42 +200,41 @@ export const TLTicketDetailPage: React.FC = () => {
   const tlInitials = currentUser?.name ? getInitials(currentUser.name) : 'TL';
   const tlLabel = currentUser?.name ? `${currentUser.name} (team lead)` : 'Team Lead';
 
-  const [thread, setThread] = useState<ThreadData | null>(null);
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [authorNames, setAuthorNames] = useState<Record<string,string>>({});
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
-  const [commentText, setCommentText] = useState('');
-  const [commentError, setCommentError] = useState('');
-  const [sending, setSending] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [statusReason, setStatusReason] = useState('');
-  const [showReasonInput, setShowReasonInput] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState('');
-  const [assigning, setAssigning] = useState(false);
-  const [commentFocused, setCommentFocused] = useState(false);
-  const [showApologyModal, setShowApologyModal] = useState(false);
+  const [thread, setThread]                           = useState<ThreadData | null>(null);
+  const [threadLoading, setThreadLoading]             = useState(false);
+  const [authorNames, setAuthorNames]                 = useState<Record<string,string>>({});
+  const [customerInfo, setCustomerInfo]               = useState<CustomerInfo | null>(null);
+  const [commentText, setCommentText]                 = useState('');
+  const [commentError, setCommentError]               = useState('');
+  const [sending, setSending]                         = useState(false);
+  const [selectedStatus, setSelectedStatus]           = useState('');
+  const [updatingStatus, setUpdatingStatus]           = useState(false);
+  const [statusReason, setStatusReason]               = useState('');
+  const [showReasonInput, setShowReasonInput]         = useState(false);
+  const [selectedAgent, setSelectedAgent]             = useState('');
+  const [assigning, setAssigning]                     = useState(false);
+  const [commentFocused, setCommentFocused]           = useState(false);
+  const [showApologyModal, setShowApologyModal]       = useState(false);
+  const [showReopenWarningModal, setShowReopenWarningModal] = useState(false);
   const [breachJustifications, setBreachJustifications] = useState<BreachJustification[]>([]);
 
-  // ── Route ticket state (Customer Support TL only) ────────────────────────
-  const [allTeams, setAllTeams] = useState<TeamItem[]>([]);
+  const [allTeams, setAllTeams]                       = useState<TeamItem[]>([]);
   const [selectedRerouteTeam, setSelectedRerouteTeam] = useState('');
-  const [rerouting, setRerouting] = useState(false);
+  const [rerouting, setRerouting]                     = useState(false);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const customerName = customerInfo?.full_name || 'Customer';
-  const agentOptions = (teamOverview?.agents ?? []).map((a) => ({ value: String(a.user_id), label: `${a.full_name || 'Agent ' + String(a.user_id).slice(0,8)} (${a.open_tickets} open)` }));
-  const responseBreached = !!tlTicketDetail?.response_sla_breached_at;
+  const textareaRef  = useRef<HTMLTextAreaElement>(null);
+
+  const customerName      = customerInfo?.full_name || 'Customer';
+  const agentOptions      = (teamOverview?.agents ?? []).map((a) => ({ value: String(a.user_id), label: `${a.full_name || 'Agent ' + String(a.user_id).slice(0,8)} (${a.open_tickets} open)` }));
+  const responseBreached  = !!tlTicketDetail?.response_sla_breached_at;
   const resolutionBreached = !!tlTicketDetail?.sla_breached_at;
-  const anyBreached = responseBreached || resolutionBreached;
+  const anyBreached       = responseBreached || resolutionBreached;
+  const isCustomerSupportTL = teamOverview?.team_name === CUSTOMER_SUPPORT_TEAM_NAME;
 
   const productName = tlTicketDetail?.product_id
     ? products.find((p) => p.id === String(tlTicketDetail.product_id))?.name ?? null
     : null;
-
-  // ── Is this user the Customer Support Team lead? ─────────────────────────
-  const isCustomerSupportTL = teamOverview?.team_name === CUSTOMER_SUPPORT_TEAM_NAME;
 
   const loadThread = async () => {
     if (!ticketId) return;
@@ -275,29 +246,16 @@ export const TLTicketDetailPage: React.FC = () => {
       setAuthorNames(names);
     } catch { } finally { setThreadLoading(false); }
   };
-  const loadCustomerInfo = async () => { if (!ticketId) return; try { setCustomerInfo(await ticketsService.getTLTicketCustomerInfo(ticketId)); } catch { } };
+  const loadCustomerInfo         = async () => { if (!ticketId) return; try { setCustomerInfo(await ticketsService.getTLTicketCustomerInfo(ticketId)); } catch { } };
   const loadBreachJustifications = async () => { if (!ticketId) return; try { setBreachJustifications(await ticketsService.getTLBreachJustifications(ticketId)); } catch { } };
-
-  const loadAllTeams = async () => {
-    try {
-      const teams = await ticketsService.getAllTeams();
-      setAllTeams(teams);
-    } catch {
-      // non-critical, silently ignore
-    }
-  };
+  const loadAllTeams             = async () => { try { setAllTeams(await ticketsService.getAllTeams()); } catch { } };
 
   useEffect(() => {
     if (ticketId) { dispatch(fetchTLTicket(ticketId)); dispatch(fetchTeamOverview()); loadThread(); loadCustomerInfo(); loadBreachJustifications(); }
     dispatch(fetchProducts());
   }, [ticketId, dispatch]);
 
-  useEffect(() => {
-    if (isCustomerSupportTL) {
-      loadAllTeams();
-    }
-  }, [isCustomerSupportTL]);
-
+  useEffect(() => { if (isCustomerSupportTL) loadAllTeams(); }, [isCustomerSupportTL]);
   useEffect(() => { if (tlTicketDetail) setSelectedStatus(tlTicketDetail.status); }, [tlTicketDetail]);
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [thread]);
   useEffect(() => { setShowReasonInput(false); }, [selectedStatus]);
@@ -347,36 +305,32 @@ export const TLTicketDetailPage: React.FC = () => {
       setSelectedRerouteTeam('');
       dispatch(fetchTLTicket(ticketId));
       loadThread();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Failed to route ticket');
-    } finally {
-      setRerouting(false);
-    }
+    } catch (err: any) { toast.error(err?.response?.data?.detail ?? 'Failed to route ticket'); }
+    finally { setRerouting(false); }
   };
 
   if (isLoading || !tlTicketDetail) return <MainLayout navItems={tlNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
 
   const t = tlTicketDetail;
+
   const resolvedAgentName = (() => {
     if (!t.assigned_to) return null;
     const agent = (teamOverview?.agents ?? []).find((a) => String(a.user_id) === String(t.assigned_to));
     return agent?.full_name ?? null;
   })();
 
-  // ── SLA state flags ───────────────────────────────────────────────────────
   const responseIsBreached = !!t.response_sla_breached_at;
   const responseIsMet      = !!t.first_response_at && !responseIsBreached;
   const responseIsOverdue  = !t.first_response_at && !responseIsBreached && !!t.sla_response_due && new Date() > new Date(t.sla_response_due);
+  const resolveIsBreached  = !!t.sla_breached_at;
+  const resolveIsMet       = !!t.resolved_at && !resolveIsBreached;
+  const resolveIsOverdue   = !t.resolved_at && !resolveIsBreached && !['resolved','closed'].includes(t.status) && !!t.sla_resolve_due && new Date() > new Date(t.sla_resolve_due);
 
-  const resolveIsBreached = !!t.sla_breached_at;
-  const resolveIsMet      = !!t.resolved_at && !resolveIsBreached;
-  const resolveIsOverdue  = !t.resolved_at && !resolveIsBreached && !['resolved','closed'].includes(t.status) && !!t.sla_resolve_due && new Date() > new Date(t.sla_resolve_due);
-
-  // Reroute dropdown: exclude Customer Support Team itself
-  const rerouteOptions = allTeams.filter((team) => team.name !== CUSTOMER_SUPPORT_TEAM_NAME);
+  const rerouteOptions     = allTeams.filter((team) => team.name !== CUSTOMER_SUPPORT_TEAM_NAME);
+  const showReopenWarning  = t.reopen_count >= REOPEN_WARNING_THRESHOLD;
 
   const col1 = [
-    { label: 'Status', node: <StatusBadge status={t.status} /> },
+    { label: 'Status',       node: <StatusBadge status={t.status} /> },
     ...(t.priority ? [{ label: 'Priority', node: <PriorityLabel priority={t.priority} /> }] : []),
     ...(t.severity ? [{ label: 'Severity', node: <span className="flex items-center gap-1.5"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span> }] : []),
     {
@@ -384,9 +338,7 @@ export const TLTicketDetailPage: React.FC = () => {
       node: t.customer_priority ? (
         <span className="flex items-center gap-1.5">
           <span className="capitalize">{t.customer_priority}</span>
-          {t.priority_overridden && (
-            <span className="text-[10px] font-medium text-[#ff991f] bg-[#fff7e6] border border-[#ffe2a8] px-1.5 py-0.5 rounded">Overridden</span>
-          )}
+          {t.priority_overridden && <span className="text-[10px] font-medium text-[#ff991f] bg-[#fff7e6] border border-[#ffe2a8] px-1.5 py-0.5 rounded">Overridden</span>}
         </span>
       ) : <span className="text-[#8993a4]">—</span>,
     },
@@ -394,26 +346,27 @@ export const TLTicketDetailPage: React.FC = () => {
   ];
 
   const col2 = [
-    ...(productName ? [{ label: 'Product', node: <span>{productName}</span> }] : []),
+    ...(productName ? [{ label: 'Product',       node: <span>{productName}</span> }] : []),
     ...(t.environment ? [{ label: 'Environment', node: <span className="capitalize">{t.environment}</span> }] : []),
     { label: 'Customer Tier', node: t.tier_snapshot ? <span className="capitalize font-medium">{t.tier_snapshot}</span> : <span className="text-[#8993a4]">—</span> },
-    ...(t.source ? [{ label: 'Source', node: <span className="capitalize">{t.source}</span> }] : []),
+    ...(t.source ? [{ label: 'Source',           node: <span className="capitalize">{t.source}</span> }] : []),
   ];
 
-  // ── col3: always show due times unchanged; colour + badge when met/breached/overdue ──
   const col3 = [
-    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
-    { label: 'Reopens', node: <span>{t.reopen_count}</span> },
+    { label: 'Raised',   node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
+    {
+      label: 'Reopens',
+      node: (
+        <span className={clsx('font-medium', showReopenWarning ? 'text-amber-600' : 'text-[#172b4d]')}>
+          {t.reopen_count}
+          {showReopenWarning && <span className="ml-1.5 text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-600 px-1.5 py-0.5 rounded">High</span>}
+        </span>
+      ),
+    },
     ...(t.sla_response_due ? [{
       label: 'Response due',
       node: (
-        <span className={clsx(
-          'flex items-center gap-1.5 text-sm flex-wrap',
-          responseIsBreached ? 'text-red-600 font-medium' :
-          responseIsMet      ? 'text-green-600 font-medium' :
-          responseIsOverdue  ? 'text-red-500' :
-                               'text-[#172b4d]',
-        )}>
+        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap', responseIsBreached ? 'text-red-600 font-medium' : responseIsMet ? 'text-green-600 font-medium' : responseIsOverdue ? 'text-red-500' : 'text-[#172b4d]')}>
           {format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
           {responseIsBreached && <SLAStatusBadge type="breached" />}
           {responseIsMet      && <SLAStatusBadge type="met" />}
@@ -425,13 +378,7 @@ export const TLTicketDetailPage: React.FC = () => {
     ...(t.sla_resolve_due ? [{
       label: 'Resolve due',
       node: (
-        <span className={clsx(
-          'flex items-center gap-1.5 text-sm flex-wrap',
-          resolveIsBreached ? 'text-red-600 font-medium' :
-          resolveIsMet      ? 'text-green-600 font-medium' :
-          resolveIsOverdue  ? 'text-red-500' :
-                              'text-[#172b4d]',
-        )}>
+        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap', resolveIsBreached ? 'text-red-600 font-medium' : resolveIsMet ? 'text-green-600 font-medium' : resolveIsOverdue ? 'text-red-500' : 'text-[#172b4d]')}>
           {format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
           {resolveIsBreached && <SLAStatusBadge type="breached" />}
           {resolveIsMet      && <SLAStatusBadge type="met" />}
@@ -444,7 +391,21 @@ export const TLTicketDetailPage: React.FC = () => {
 
   return (
     <MainLayout navItems={tlNav} pageTitle={t.ticket_number}>
-      {showApologyModal && <ApologyModal ticketId={t.id} ticketNumber={t.ticket_number} customerName={customerInfo?.full_name} onClose={() => setShowApologyModal(false)} onSent={() => { loadThread(); dispatch(fetchTLTicket(ticketId!)); }} />}
+      {showApologyModal && (
+        <ApologyModal
+          ticketId={t.id} ticketNumber={t.ticket_number} customerName={customerInfo?.full_name}
+          onClose={() => setShowApologyModal(false)}
+          onSent={() => { loadThread(); dispatch(fetchTLTicket(ticketId!)); }}
+        />
+      )}
+      {showReopenWarningModal && (
+        <ReopenWarningModal
+          ticketId={t.id} ticketNumber={t.ticket_number}
+          reopenCount={t.reopen_count} customerName={customerInfo?.full_name}
+          onClose={() => setShowReopenWarningModal(false)}
+          onSent={() => { loadThread(); dispatch(fetchTLTicket(ticketId!)); }}
+        />
+      )}
 
       <div className="h-[calc(100vh-56px)] bg-[#f4f5f7] overflow-hidden">
         <div className="h-full overflow-y-auto">
@@ -465,10 +426,27 @@ export const TLTicketDetailPage: React.FC = () => {
               <div className="flex items-center gap-2 flex-shrink-0">
                 {anyBreached && <SLABreachPill />}
                 <StatusBadge status={t.status} />
+                {/* Send apology — resolution breach only */}
                 {anyBreached && (
-                  <button onClick={() => resolutionBreached && setShowApologyModal(true)} disabled={!resolutionBreached} title={resolutionBreached ? 'Send apology to customer for resolution SLA breach' : 'Apology is sent only for resolution SLA breach'} className={clsx('h-8 px-3 rounded text-xs font-medium transition-colors flex items-center gap-1.5', resolutionBreached ? 'bg-pink-600 hover:bg-pink-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60')}>
+                  <button
+                    onClick={() => resolutionBreached && setShowApologyModal(true)}
+                    disabled={!resolutionBreached}
+                    title={resolutionBreached ? 'Send apology to customer for resolution SLA breach' : 'Apology is sent only for resolution SLA breach'}
+                    className={clsx('h-8 px-3 rounded text-xs font-medium transition-colors flex items-center gap-1.5', resolutionBreached ? 'bg-pink-600 hover:bg-pink-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60')}
+                  >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                     Send apology
+                  </button>
+                )}
+                {/* Send reopen warning — reopen_count >= 3 */}
+                {showReopenWarning && (
+                  <button
+                    onClick={() => setShowReopenWarningModal(true)}
+                    title={`This ticket has been reopened ${t.reopen_count} times`}
+                    className="h-8 px-3 rounded text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                    Warn customer
                   </button>
                 )}
               </div>
@@ -502,11 +480,7 @@ export const TLTicketDetailPage: React.FC = () => {
               <AgentSLAPanel createdAt={t.created_at} slaResponseDue={t.sla_response_due} slaResolveDue={t.sla_resolve_due} firstResponseAt={t.first_response_at} resolvedAt={t.resolved_at} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onHoldStartedAt={t.on_hold_started_at ?? null} onHoldAccumulated={t.on_hold_duration_accumulated ?? 0} status={t.status} showBreachJustifications breachJustifications={breachJustifications} />
             </div>
 
-            {/* ── Action panels grid ─────────────────────────────────────────── */}
-            <div className={clsx(
-              'px-5 grid gap-3',
-              isCustomerSupportTL ? 'grid-cols-3' : 'grid-cols-2',
-            )}>
+            <div className={clsx('px-5 grid gap-3', isCustomerSupportTL ? 'grid-cols-3' : 'grid-cols-2')}>
               {/* Update Status */}
               <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
                 <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-3">Update Status</p>
@@ -547,28 +521,14 @@ export const TLTicketDetailPage: React.FC = () => {
                     <span className="text-[10px] font-medium text-[#0052cc] bg-[#e9f0ff] border border-[#c0d4ff] px-1.5 py-0.5 rounded">CS Team Lead</span>
                   </div>
                   <div className="flex items-start gap-3">
-                    <select
-                      value={selectedRerouteTeam}
-                      onChange={(e) => setSelectedRerouteTeam(e.target.value)}
-                      className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors flex-1"
-                    >
+                    <select value={selectedRerouteTeam} onChange={(e) => setSelectedRerouteTeam(e.target.value)} className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors flex-1">
                       <option value="">Select team…</option>
-                      {rerouteOptions.map((team) => (
-                        <option key={team.id} value={team.id}>{team.name}</option>
-                      ))}
+                      {rerouteOptions.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                     </select>
-                    <button
-                      onClick={onReroute}
-                      disabled={rerouting || !selectedRerouteTeam}
-                      className="h-8 px-4 rounded border border-[#0052cc] text-sm text-[#0052cc] hover:bg-[#e9f0ff] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                    >
+                    <button onClick={onReroute} disabled={rerouting || !selectedRerouteTeam} className="h-8 px-4 rounded border border-[#0052cc] text-sm text-[#0052cc] hover:bg-[#e9f0ff] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                       {rerouting
                         ? <div className="w-3.5 h-3.5 border border-[#0052cc] border-t-transparent rounded-full animate-spin" />
-                        : (
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                          </svg>
-                        )
+                        : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
                       }
                       Route
                     </button>
@@ -598,11 +558,13 @@ export const TLTicketDetailPage: React.FC = () => {
                     <div className="w-8 h-8 rounded-full bg-[#ff991f] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">{tlInitials}</div>
                     <div className="flex-1 min-w-0">
                       <div className={clsx('rounded border bg-white transition-all overflow-hidden', commentFocused ? 'border-[#ff991f] shadow-[0_0_0_1px_#ff991f]' : 'border-[#dfe1e6] hover:border-[#b3bac5]')}>
-                        <textarea ref={textareaRef} value={commentText} onFocus={() => setCommentFocused(true)}
+                        <textarea
+                          ref={textareaRef} value={commentText} onFocus={() => setCommentFocused(true)}
                           onChange={(e) => { setCommentText(e.target.value); setCommentError(''); e.target.style.height='auto'; e.target.style.height=`${e.target.scrollHeight}px`; }}
                           onKeyDown={(e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); onComment(); } }}
                           placeholder="Add an internal note visible only to team leads and agents…" rows={commentFocused ? 3 : 1}
-                          className="w-full text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-transparent px-3 py-2.5 resize-none outline-none leading-relaxed" style={{ maxHeight: '400px', overflowY: 'auto' }} />
+                          className="w-full text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-transparent px-3 py-2.5 resize-none outline-none leading-relaxed" style={{ maxHeight: '400px', overflowY: 'auto' }}
+                        />
                       </div>
                       {commentError && <p className="text-xs text-[#de350b] mt-1">{commentError}</p>}
                       {commentFocused && (
@@ -641,6 +603,7 @@ export const TLTicketDetailPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
           </div>
         </div>
       </div>

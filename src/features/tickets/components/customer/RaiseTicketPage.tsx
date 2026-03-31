@@ -290,7 +290,7 @@ export const RaiseTicketPage: React.FC = () => {
     }
   };
 
-  const productOptions = products.filter((p) => p.is_active).map((p) => ({ value: p.id, label: p.name }));
+  const productOptions = products.map((p) => ({ value: p.id, label: p.name }));
   const envOptions = ENVIRONMENTS.map((e) => ({ value: e, label: e.charAt(0).toUpperCase() + e.slice(1) }));
 
   // ── Field style helpers ───────────────────────────────────────────────────
