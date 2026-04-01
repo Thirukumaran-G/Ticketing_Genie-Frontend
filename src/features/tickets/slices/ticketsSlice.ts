@@ -23,7 +23,7 @@ interface TicketsState {
   tlTicketDetail: TLTicketDetail | null;
   teamOverview: TeamOverviewResponse | null;
   // Products (for dropdown in create form)
-  products: { id: string; name: string; is_active: boolean }[];
+  products: { id: string; name: string; code: string }[];
   // Shared
   isLoading: boolean;
   isSubmitting: boolean;
@@ -163,7 +163,7 @@ export const fetchTeamOverview = createAsyncThunk(
 export const fetchProducts = createAsyncThunk(
   'tickets/fetchProducts',
   async (_, { rejectWithValue }) => {
-    try { return await ticketsService.getProducts(); }
+    try { return await ticketsService.getSubscribedProducts(); }
     catch (e) { return rejectWithValue(apiErr(e)); }
   },
 );

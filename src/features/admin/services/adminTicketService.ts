@@ -37,18 +37,22 @@ export const adminTicketService = {
   // SLA Rules
   listSLARules:  () =>
     ticketClient.get<SLARuleResponse[]>('/admin/sla-rules').then(r => r.data),
-  upsertSLARule: (p: { tier_id: string; priority: string; response_time_min: number; resolution_time_min: number }) =>
-    ticketClient.post<SLARuleResponse>('/admin/sla-rules', p).then(r => r.data),
-  deleteSLARule: (id: string) =>
-    ticketClient.delete(`/admin/sla-rules/${id}`),
+  toggleSLARule: (id: string) =>
+    ticketClient.patch<SLARuleResponse>(`/admin/sla-rules/${id}/toggle`).then(r => r.data),
+
+  toggleSeverityPriorityMap: (id: string) =>
+    ticketClient.patch<SeverityPriorityMapResponse>(`/admin/severity-priority-map/${id}/toggle`).then(r => r.data),
 
   // Severity-Priority Map
   listSeverityPriorityMap:   () =>
     ticketClient.get<SeverityPriorityMapResponse[]>('/admin/severity-priority-map').then(r => r.data),
-  upsertSeverityPriorityMap: (p: { severity: string; tier_id: string; derived_priority: string }) =>
-    ticketClient.post<SeverityPriorityMapResponse>('/admin/severity-priority-map', p).then(r => r.data),
-  deleteSeverityPriorityMap: (id: string) =>
-    ticketClient.delete(`/admin/severity-priority-map/${id}`),
+
+  updateSLARule: (id: string, p: { response_time_min: number; resolution_time_min: number }) =>
+    ticketClient.patch<SLARuleResponse>(`/admin/sla-rules/${id}`, p).then(r => r.data),
+
+  updateSeverityPriorityMap: (id: string, p: { derived_priority: string }) =>
+    ticketClient.patch<SeverityPriorityMapResponse>(`/admin/severity-priority-map/${id}`, p).then(r => r.data),
+  
 
   // Keyword Rules
   listKeywordRules:  () =>
@@ -80,6 +84,8 @@ export const adminTicketService = {
     ticketClient.get<{ average_first_response_time_min: number; median_first_response_time_min: number }>('/admin/reports/first-response-time').then(r => r.data),
   reportTicketsByProduct:  () =>
     ticketClient.get<{ tickets_by_product: { product_id: string; product_name: string; total: number; resolved: number; avg_resolution_time_min: number }[] }>('/admin/reports/tickets-by-product').then(r => r.data),
+  reportResolvedByDay: () =>
+    ticketClient.get<{ resolved_by_day: { day: string; count: number }[] }>('/admin/reports/resolved-by-day').then(r => r.data),
   reportDashboardSummary: () =>
     ticketClient.get<{
       open_ticket_count:      number;
@@ -103,6 +109,8 @@ export const adminTicketService = {
     ticketClient.delete(`/admin/teams/${id}`),
   listTeamsByProduct: (productId: string) =>
     ticketClient.get<TeamResponse[]>(`/admin/products/${productId}/teams`).then(r => r.data),
+  removeTeamLead: (teamId: string) =>
+    ticketClient.patch<TeamResponse>(`/admin/teams/${teamId}/remove-lead`).then(r => r.data),
 
   // Team Members
   addMember: (teamId: string, p: { user_id: string; experience?: number; skill_text?: string }) =>

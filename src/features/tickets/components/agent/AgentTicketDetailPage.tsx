@@ -127,6 +127,7 @@ const KV: React.FC<{ label: string; children: React.ReactNode }> = ({ label, chi
   </div>
 );
 
+// ── AiDraftPanel ──────────────────────────────────────────────────────────────
 const AiDraftPanel: React.FC<{ draft: string; onUse: (text: string) => void }> = ({ draft, onUse }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedDraft, setEditedDraft] = useState(draft);
@@ -134,7 +135,12 @@ const AiDraftPanel: React.FC<{ draft: string; onUse: (text: string) => void }> =
   return (
     <div className="bg-white border border-[#dfe1e6] rounded px-5 py-4">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest">AI Draft</p>
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-[#6554c0]" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+          </svg>
+          <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest">AI Draft</p>
+        </div>
         <div className="flex items-center gap-1.5">
           <button onClick={isEditing ? handleCancel : () => setIsEditing(true)} className="px-3 py-1 rounded border border-[#dfe1e6] text-xs text-[#42526e] hover:bg-[#f4f5f7] transition-colors">{isEditing ? 'Cancel' : 'Edit'}</button>
           <button onClick={() => onUse(editedDraft)} className="px-3 py-1 rounded bg-[#0052cc] text-xs text-white hover:bg-[#0065ff] transition-colors">Use draft</button>
@@ -241,6 +247,13 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; custom
   );
 };
 
+// ── SparkleIcon ───────────────────────────────────────────────────────────────
+const SparkleIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+  </svg>
+);
+
 export const AgentTicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
@@ -266,6 +279,13 @@ export const AgentTicketDetailPage: React.FC = () => {
   const [showUnassignModal, setShowUnassignModal] = useState(false);
   const [unassigning, setUnassigning] = useState(false);
   const [commentFocused, setCommentFocused] = useState(false);
+
+  // ── AI draft visibility: hidden once agent has posted at least one reply ──
+  const [aiDraftDismissed, setAiDraftDismissed] = useState(false);
+
+  // ── Enhance state ─────────────────────────────────────────────────────────
+  const [enhancing, setEnhancing] = useState(false);
+  const [enhanceChanges, setEnhanceChanges] = useState<string | null>(null);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -306,6 +326,13 @@ export const AgentTicketDetailPage: React.FC = () => {
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [thread]);
   useEffect(() => { setShowReasonInput(['resolved', 'on_hold'].includes(selectedStatus)); }, [selectedStatus]);
 
+  // ── Derive whether AI draft should be shown ────────────────────────────────
+  // Hide if agent has already posted at least one non-internal reply, or manually dismissed
+  const agentHasReplied = !!(thread?.conversations.some(
+    (c) => c.author_type === 'agent' && !c.is_internal
+  ));
+  const showAiDraft = !!(agentTicketDetail?.ai_draft) && !aiDraftDismissed && !agentHasReplied;
+
   const merged: ThreadEntry[] = thread
     ? [...thread.conversations.map((c) => ({ kind: 'message' as const, data: c })), ...thread.attachments.map((a) => ({ kind: 'attachment' as const, data: a }))].sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime())
     : [];
@@ -317,6 +344,7 @@ export const AgentTicketDetailPage: React.FC = () => {
       setSending(true); setCommentError('');
       await ticketsService.postAgentComment(ticketId, commentText, isInternal);
       setCommentText('');
+      setEnhanceChanges(null);
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
       toast.success(isInternal ? 'Note saved' : 'Reply sent');
       loadThread(); dispatch(fetchAgentTicket(ticketId));
@@ -334,7 +362,7 @@ export const AgentTicketDetailPage: React.FC = () => {
   };
 
   const handleUseDraft = (text: string) => {
-    setCommentText(text); setIsInternal(false);
+    setCommentText(text); setIsInternal(false); setEnhanceChanges(null);
     setTimeout(() => {
       if (!textareaRef.current) return;
       textareaRef.current.focus();
@@ -354,6 +382,29 @@ export const AgentTicketDetailPage: React.FC = () => {
       setShowUnassignModal(false); navigate('/tickets/agent/all');
     } catch (err: any) { toast.error(err?.response?.data?.detail ?? 'Failed to unassign ticket'); }
     finally { setUnassigning(false); }
+  };
+
+  // ── Enhance handler ───────────────────────────────────────────────────────
+  const handleEnhance = async () => {
+    if (!ticketId || !commentText.trim()) return;
+    try {
+      setEnhancing(true);
+      setEnhanceChanges(null);
+      const result = await ticketsService.enhanceReply(ticketId, commentText, isInternal ? 'internal' : 'reply');
+      setCommentText(result.enhanced_text);
+      setEnhanceChanges(result.changes_summary);
+      // Resize textarea to fit enhanced content
+      setTimeout(() => {
+        if (!textareaRef.current) return;
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      }, 10);
+      toast.success('Reply enhanced');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to enhance reply');
+    } finally {
+      setEnhancing(false);
+    }
   };
 
   if (isLoading) return <MainLayout navItems={agentNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
@@ -390,7 +441,6 @@ export const AgentTicketDetailPage: React.FC = () => {
     ...(t.customer_priority ? [{ label: 'Cust. priority', node: <span className="capitalize">{t.customer_priority}</span> }] : []),
   ];
 
-  // ── col3: always show due times as-is; change colour + add badge when met/breached/overdue ──
   const col3 = [
     { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
     { label: 'Reopens', node: <span>{t.reopen_count}</span> },
@@ -500,7 +550,19 @@ export const AgentTicketDetailPage: React.FC = () => {
 
             {(t.response_sla_breached_at || t.sla_breached_at) && <BreachJustificationPanel ticketId={t.id} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onSubmitted={() => dispatch(fetchAgentTicket(ticketId!))} />}
 
-            {t.ai_draft && <AiDraftPanel draft={t.ai_draft} onUse={handleUseDraft} />}
+            {/* AI Draft — only shown before the agent has sent any customer-facing reply */}
+            {showAiDraft && (
+              <div className="relative">
+                <AiDraftPanel draft={t.ai_draft!} onUse={handleUseDraft} />
+                <button
+                  onClick={() => setAiDraftDismissed(true)}
+                  className="absolute top-3 right-16 text-[#8993a4] hover:text-[#44546f] transition-colors p-1 rounded hover:bg-[#f4f5f7]"
+                  title="Dismiss AI draft"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            )}
 
             <div className="bg-white border border-[#dfe1e6] rounded flex flex-col overflow-hidden">
               <div className="px-6 pt-4 pb-2 flex-shrink-0 flex items-center justify-between">
@@ -515,8 +577,8 @@ export const AgentTicketDetailPage: React.FC = () => {
               <div className="px-6 pb-3">
                 <div className="flex items-center mb-2">
                   <div className="flex items-center gap-1 p-0.5 bg-[#f4f5f7] rounded border border-[#dfe1e6]">
-                    <button onClick={() => setIsInternal(false)} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors', !isInternal ? 'bg-white text-[#0052cc] border border-[#dfe1e6] shadow-sm' : 'text-[#6b778c] hover:text-[#172b4d]')}>Reply to customer</button>
-                    <button onClick={() => setIsInternal(true)} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1', isInternal ? 'bg-[#fff7e6] text-[#ff991f] border border-[#ffe2a8]' : 'text-[#6b778c] hover:text-[#172b4d]')}>
+                    <button onClick={() => { setIsInternal(false); setEnhanceChanges(null); }} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors', !isInternal ? 'bg-white text-[#0052cc] border border-[#dfe1e6] shadow-sm' : 'text-[#6b778c] hover:text-[#172b4d]')}>Reply to customer</button>
+                    <button onClick={() => { setIsInternal(true); setEnhanceChanges(null); }} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1', isInternal ? 'bg-[#fff7e6] text-[#ff991f] border border-[#ffe2a8]' : 'text-[#6b778c] hover:text-[#172b4d]')}>
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
                       Internal note
                     </button>
@@ -529,7 +591,7 @@ export const AgentTicketDetailPage: React.FC = () => {
                       <textarea ref={textareaRef} value={commentText}
                         onFocus={() => { setCommentFocused(true); if (!inProgressFiredRef.current && agentTicketDetail?.status === 'assigned') { inProgressFiredRef.current = true; ticketsService.setInProgress(ticketId!).catch(() => {}); } }}
                         onBlur={() => { if (!commentText.trim()) setCommentFocused(false); }}
-                        onChange={(e) => { setCommentText(e.target.value); setCommentError(''); e.target.style.height='auto'; e.target.style.height=`${e.target.scrollHeight}px`; }}
+                        onChange={(e) => { setCommentText(e.target.value); setCommentError(''); setEnhanceChanges(null); e.target.style.height='auto'; e.target.style.height=`${e.target.scrollHeight}px`; }}
                         onKeyDown={(e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); onComment(); } }}
                         placeholder={isInternal ? 'Internal note — only visible to agents…' : 'Write your response to the customer…'}
                         rows={commentFocused ? 3 : 1}
@@ -538,13 +600,42 @@ export const AgentTicketDetailPage: React.FC = () => {
                       />
                     </div>
                     {commentError && <p className="text-xs text-[#de350b] mt-1">{commentError}</p>}
+
+                    {/* Enhance changes summary */}
+                    {enhanceChanges && (
+                      <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-[#f3f0ff] border border-[#c0b6f2] rounded text-xs text-[#403294]">
+                        <SparkleIcon className="w-3 h-3 flex-shrink-0 text-[#6554c0]" />
+                        <span>{enhanceChanges}</span>
+                      </div>
+                    )}
+
                     {commentFocused && (
                       <div className="flex items-center gap-2 mt-2">
                         <button onClick={onComment} disabled={sending || !commentText.trim()} className="px-3 py-1.5 rounded bg-[#0052cc] text-white text-sm font-medium hover:bg-[#0065ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                           {sending && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
                           {isInternal ? 'Save note' : 'Send reply'}
                         </button>
-                        <button onClick={() => { setCommentText(''); setCommentError(''); setCommentFocused(false); }} className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors">Cancel</button>
+
+                        {/* ── Enhance button ── */}
+                        <button
+                          onClick={handleEnhance}
+                          disabled={enhancing || !commentText.trim()}
+                          title="Enhance with AI"
+                          className={clsx(
+                            'px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center gap-1.5',
+                            'border border-[#c0b6f2] bg-[#f3f0ff] text-[#6554c0]',
+                            'hover:bg-[#e8e4ff] hover:border-[#998dd9]',
+                            'disabled:opacity-40 disabled:cursor-not-allowed',
+                          )}
+                        >
+                          {enhancing
+                            ? <div className="w-3.5 h-3.5 border border-[#6554c0]/40 border-t-[#6554c0] rounded-full animate-spin" />
+                            : <SparkleIcon className="w-3.5 h-3.5" />
+                          }
+                          {enhancing ? 'Enhancing…' : 'Enhance'}
+                        </button>
+
+                        <button onClick={() => { setCommentText(''); setCommentError(''); setCommentFocused(false); setEnhanceChanges(null); }} className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors">Cancel</button>
                         <span className="ml-auto text-xs text-[#8993a4]"><kbd className="border border-[#dfe1e6] bg-[#f4f5f7] rounded px-1 py-0.5 text-[10px]">Enter</kbd> to send</span>
                       </div>
                     )}

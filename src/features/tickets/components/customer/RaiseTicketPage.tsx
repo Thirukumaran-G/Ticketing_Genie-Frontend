@@ -290,7 +290,7 @@ export const RaiseTicketPage: React.FC = () => {
     }
   };
 
-  const productOptions = products.filter((p) => p.is_active).map((p) => ({ value: p.id, label: p.name }));
+  const productOptions = products.map((p) => ({ value: p.id, label: p.name }));
   const envOptions = ENVIRONMENTS.map((e) => ({ value: e, label: e.charAt(0).toUpperCase() + e.slice(1) }));
 
   // ── Field style helpers ───────────────────────────────────────────────────
@@ -513,7 +513,7 @@ export const RaiseTicketPage: React.FC = () => {
                           : <><span className="text-[#0052CC] font-medium">Browse</span> or drop files here</>
                         }
                       </p>
-                      <p className="text-xs text-[#8993A4] mt-0.5">Images, PDF, Office, logs · Max 25 MB each</p>
+                      <p className="text-xs text-[#8993A4] mt-0.5">Images, PDF, Max 25 MB each</p>
                     </div>
                   </div>
 

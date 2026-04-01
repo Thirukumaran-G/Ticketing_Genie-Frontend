@@ -170,7 +170,7 @@ export interface AdminUserResponse     { id: string; full_name: string; email: s
 // ── Admin — Ticket service ────────────────────────────────────────────────────
 export interface EmailConfigResponse       { id: string; key: string; value?: string; is_secret: boolean; is_active: boolean; updated_at?: string; }
 export interface SLARuleResponse           { id: string; tier_id: string; priority: string; response_time_min: number; resolution_time_min: number; is_active: boolean; }
-export interface SeverityPriorityMapResponse { id: string; severity: string; tier_id: string; derived_priority: string; }
+export interface SeverityPriorityMapResponse { id: string; severity: string; tier_id: string; derived_priority: string; is_active: boolean; }
 export interface KeywordRuleResponse       { id: string; keyword: string; severity: string; is_active: boolean; }
 export interface ProductConfigResponse     { id: string; product_id: string; min_severity?: string; default_escalate: boolean; is_active: boolean; }
 export interface TeamResponse              { id: string; name: string; product_id: string; team_lead_id?: string; is_active: boolean; }
