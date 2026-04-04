@@ -1,3 +1,4 @@
+// src/features/tickets/services/ticketServices.ts
 import { ticketClient, authClient } from '../../../lib/axios';
 import { ENV } from '../../../config/env';
 import {
@@ -148,6 +149,11 @@ export const ticketsService = {
     ticketClient
       .patch(`/agent/tickets/${ticketId}/unassign`, { justification })
       .then((r) => r.data),
+
+  removeTicketFromGroup: (groupId: string, ticketId: string) =>
+  ticketClient
+    .delete(`/teamlead/groups/${groupId}/members/${ticketId}`)
+    .then((r) => r.data),
 
   /** Submit SLA breach justification */
   submitBreachJustification: (
@@ -352,4 +358,77 @@ export const ticketsService = {
     });
     return map;
   },
+
+  // ── Ticket Group — Team Lead ──────────────────────────────────────────────────
+
+  listTicketGroups: () =>
+  ticketClient
+    .get('/teamlead/groups')
+    .then((r) => r.data),
+
+confirmTicketGroup: (groupId: string, name?: string) =>
+  ticketClient
+    .post(`/teamlead/groups/${groupId}/confirm`, { name })
+    .then((r) => r.data),
+
+setGroupParent: (groupId: string, parentTicketId: string) =>
+  ticketClient
+    .post(`/teamlead/groups/${groupId}/set-parent`, {
+      parent_ticket_id: parentTicketId,
+    })
+    .then((r) => r.data),
+
+assignGroupParent: (groupId: string, agentId: string, note: string) =>
+  ticketClient
+    .post(`/teamlead/groups/${groupId}/assign-parent`, {
+      agent_id: agentId,
+      note,
+    })
+    .then((r) => r.data),
+
+broadcastToGroup: (groupId: string, message: string) =>
+  ticketClient
+    .post(`/teamlead/groups/${groupId}/broadcast`, { message })
+    .then((r) => r.data),
+
+resolveGroup: (groupId: string, resolutionMessage: string) =>
+  ticketClient
+    .post(`/teamlead/groups/${groupId}/resolve`, {
+      resolution_message: resolutionMessage,
+    })
+    .then((r) => r.data),
+
+removeGroupMember: (groupId: string, ticketId: string) =>
+  ticketClient
+    .delete(`/teamlead/groups/${groupId}/members/${ticketId}`)
+    .then((r) => r.data),
+
+getGroupsForTicket: (ticketId: string) =>
+  ticketClient
+    .get(`/teamlead/groups?ticket_id=${ticketId}`)
+    .then((r) => r.data),
+
+// ── Ticket Group — Agent ──────────────────────────────────────────────────────
+
+getAgentGroupedTickets: () =>
+  ticketClient
+    .get('/agent/grouped-tickets')
+    .then((r) => r.data),
+
+getGroupedTicketChildren: (parentTicketId: string) =>
+  ticketClient
+    .get(`/agent/grouped-tickets/${parentTicketId}/children`)
+    .then((r) => r.data),
+
+replyToChildTicket: (
+  parentTicketId: string,
+  childTicketId: string,
+  message: string,
+) =>
+  ticketClient
+    .post(
+      `/agent/grouped-tickets/${parentTicketId}/reply/${childTicketId}`,
+      { message },
+    )
+    .then((r) => r.data),
 };

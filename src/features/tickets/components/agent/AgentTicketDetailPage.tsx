@@ -1,13 +1,13 @@
 // src/features/tickets/components/agent/AgentTicketDetailPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { MainLayout } from '../../../../layouts/MainLayout';
 import { PageLoader } from '../../../../components/ui/index';
 import { StatusBadge, SeverityDot, PriorityLabel, SLABreachPill } from '../shared/TicketBadges';
-import { AgentSLAPanel } from '../shared/SLAPanel'; 
+import { AgentSLAPanel } from '../shared/SLAPanel';
 import { BreachJustificationPanel } from './BreachJustificationPanel';
 import { useAppDispatch, useAppSelector } from '../../../../app/store';
 import { fetchAgentTicket, fetchProducts, clearAgentTicketDetail } from '../../slices/ticketsSlice';
@@ -44,14 +44,14 @@ function fileIcon(mime: string | null) {
 }
 const AGENT_STATUSES = [
   { value: 'in_progress', label: 'In Progress' },
-  { value: 'on_hold', label: 'On Hold' },
-  { value: 'resolved', label: 'Resolved' },
+  { value: 'on_hold',     label: 'On Hold' },
+  { value: 'resolved',    label: 'Resolved' },
 ];
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 }
 
-// ── ImageModal ─────────────────────────────────────────────────────────────────
+// ── ImageModal ────────────────────────────────────────────────────────────────
 const ImageModal: React.FC<{ src: string; alt: string; onClose: () => void }> = ({ src, alt, onClose }) => {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -110,7 +110,7 @@ const AuthImage: React.FC<{
   );
 };
 
-// ── openAttachment ────────────────────────────────────────────────────────────
+// ── openAttachment ─────────────────────────────────────────────────────────────
 const openAttachment = async (ticketId: string, attachmentId: string) => {
   try {
     const url = await ticketsService.getAgentAttachmentSignedUrl(ticketId, attachmentId);
@@ -184,13 +184,13 @@ const UnassignModal: React.FC<{ ticketNumber: string; onConfirm: (j: string) => 
 };
 
 const TextBubble: React.FC<{ item: ConversationItem; authorNames: Record<string, string>; customerName: string; currentUserId: string }> = ({ item, authorNames, customerName }) => {
-  const isAgent = item.author_type === 'agent';
-  const isTL = item.author_type === 'team_lead';
+  const isAgent    = item.author_type === 'agent';
+  const isTL       = item.author_type === 'team_lead';
   const isInternal = item.is_internal;
-  const resolvedName = authorNames[item.author_id];
-  const displayName = isTL ? (resolvedName ? `${resolvedName} (team lead)` : 'Team Lead') : isAgent ? (resolvedName ? `${resolvedName} (agent)` : 'Agent') : customerName;
-  const initials = isTL ? (resolvedName ? getInitials(resolvedName) : 'TL') : isAgent ? (resolvedName ? getInitials(resolvedName) : 'A') : getInitials(customerName);
-  const bgColor = isTL || (isAgent && isInternal) ? 'bg-[#ff991f] text-white' : isAgent ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]';
+  const resolvedName  = authorNames[item.author_id];
+  const displayName   = isTL ? (resolvedName ? `${resolvedName} (team lead)` : 'Team Lead') : isAgent ? (resolvedName ? `${resolvedName} (agent)` : 'Agent') : customerName;
+  const initials      = isTL ? (resolvedName ? getInitials(resolvedName) : 'TL') : isAgent ? (resolvedName ? getInitials(resolvedName) : 'A') : getInitials(customerName);
+  const bgColor       = isTL || (isAgent && isInternal) ? 'bg-[#ff991f] text-white' : isAgent ? 'bg-[#0052cc] text-white' : 'bg-[#dfe1e6] text-[#44546f]';
   return (
     <div className="flex gap-3 py-4">
       <div className={clsx('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 select-none mt-0.5', bgColor)}>{initials}</div>
@@ -209,7 +209,6 @@ const TextBubble: React.FC<{ item: ConversationItem; authorNames: Record<string,
 const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; customerName: string }> = ({ att, ticketId, customerName }) => {
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const isImg = IMAGE_TYPES.has(att.mime_type ?? '');
-
   return (
     <div className="flex gap-3 py-4">
       {modalSrc && <ImageModal src={modalSrc} alt={att.file_name} onClose={() => setModalSrc(null)} />}
@@ -221,13 +220,7 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; custom
         </div>
         {isImg ? (
           <div className="inline-block border border-[#dfe1e6] rounded overflow-hidden hover:border-[#0052cc] transition-colors">
-            <AuthImage
-              ticketId={ticketId}
-              attachmentId={att.id}
-              alt={att.file_name}
-              className="w-44 h-44"
-              onClick={(signedUrl) => setModalSrc(signedUrl)}
-            />
+            <AuthImage ticketId={ticketId} attachmentId={att.id} alt={att.file_name} className="w-44 h-44" onClick={(url) => setModalSrc(url)} />
           </div>
         ) : (
           <button
@@ -247,54 +240,51 @@ const AttachmentBubble: React.FC<{ att: AttachmentItem; ticketId: string; custom
   );
 };
 
-// ── SparkleIcon ───────────────────────────────────────────────────────────────
 const SparkleIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} viewBox="0 0 20 20" fill="currentColor">
     <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
   </svg>
 );
 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export const AgentTicketDetailPage: React.FC = () => {
-  const { ticketId } = useParams<{ ticketId: string }>();
-  const navigate = useNavigate();
-  const dispatch = useAppDispatch();
+  const { ticketId: rawTicketId } = useParams<{ ticketId: string }>();
+  const navigate      = useNavigate();
+  const dispatch      = useAppDispatch();
   const { agentTicketDetail, isLoading, error, products } = useAppSelector((s) => s.tickets);
   const { user: currentUser } = useAppSelector((s) => s.auth);
-  const currentUserId = currentUser?.id ?? '';
+
+  // Normalise undefined → null once; used everywhere below
+  const ticketId: string | null = rawTicketId ?? null;
+
+  const currentUserId       = currentUser?.id ?? '';
   const currentUserInitials = currentUser?.name ? getInitials(currentUser.name) : 'A';
-  const currentUserLabel = currentUser?.name ? `${currentUser.name} (agent)` : 'Agent';
+  const currentUserLabel    = currentUser?.name ? `${currentUser.name} (agent)` : 'Agent';
 
-  const [thread, setThread] = useState<ThreadData | null>(null);
+  // ── All hooks before any conditional return ───────────────────────────────
+  const [thread, setThread]               = useState<ThreadData | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  const [authorNames, setAuthorNames] = useState<Record<string, string>>({});
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
-  const [commentText, setCommentText] = useState('');
-  const [commentError, setCommentError] = useState('');
-  const [sending, setSending] = useState(false);
-  const [isInternal, setIsInternal] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [statusReason, setStatusReason] = useState('');
-  const [showReasonInput, setShowReasonInput] = useState(false);
+  const [authorNames, setAuthorNames]     = useState<Record<string, string>>({});
+  const [customerInfo, setCustomerInfo]   = useState<CustomerInfo | null>(null);
+  const [commentText, setCommentText]     = useState('');
+  const [commentError, setCommentError]   = useState('');
+  const [sending, setSending]             = useState(false);
+  const [isInternal, setIsInternal]       = useState(false);
+  const [selectedStatus, setSelectedStatus]     = useState('');
+  const [updatingStatus, setUpdatingStatus]     = useState(false);
+  const [statusReason, setStatusReason]         = useState('');
+  const [showReasonInput, setShowReasonInput]   = useState(false);
   const [showUnassignModal, setShowUnassignModal] = useState(false);
-  const [unassigning, setUnassigning] = useState(false);
-  const [commentFocused, setCommentFocused] = useState(false);
-
-  // ── AI draft visibility: hidden once agent has posted at least one reply ──
+  const [unassigning, setUnassigning]           = useState(false);
+  const [commentFocused, setCommentFocused]     = useState(false);
   const [aiDraftDismissed, setAiDraftDismissed] = useState(false);
+  const [enhancing, setEnhancing]               = useState(false);
+  const [enhanceChanges, setEnhanceChanges]     = useState<string | null>(null);
 
-  // ── Enhance state ─────────────────────────────────────────────────────────
-  const [enhancing, setEnhancing] = useState(false);
-  const [enhanceChanges, setEnhanceChanges] = useState<string | null>(null);
-
-  const threadEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const inProgressFiredRef = useRef(false);
-
-  const customerName = customerInfo?.full_name || 'Customer';
-  const productName = agentTicketDetail?.product_id
-    ? products.find((p) => p.id === String(agentTicketDetail.product_id))?.name ?? null
-    : null;
+  const threadEndRef        = useRef<HTMLDivElement>(null);
+  const textareaRef         = useRef<HTMLTextAreaElement>(null);
+  const inProgressFiredRef  = useRef(false);
 
   const loadThread = async () => {
     if (!ticketId) return;
@@ -326,19 +316,55 @@ export const AgentTicketDetailPage: React.FC = () => {
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [thread]);
   useEffect(() => { setShowReasonInput(['resolved', 'on_hold'].includes(selectedStatus)); }, [selectedStatus]);
 
-  // ── Derive whether AI draft should be shown ────────────────────────────────
-  // Hide if agent has already posted at least one non-internal reply, or manually dismissed
+  // ── Conditional returns AFTER all hooks ───────────────────────────────────
+
+  if (!ticketId) {
+    return (
+      <MainLayout navItems={agentNav} pageTitle="Ticket Detail">
+        <div className="flex flex-col items-center justify-center h-64 gap-3">
+          <p className="text-sm text-[#44546f] font-medium">Ticket ID is required.</p>
+          <button onClick={() => navigate('/tickets/agent/all')} className="text-xs text-[#44546f] hover:underline">← Back to tickets</button>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (isLoading) return <MainLayout navItems={agentNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
+
+  if (!agentTicketDetail || error) {
+    return (
+      <MainLayout navItems={agentNav} pageTitle="Ticket Detail">
+        <div className="flex flex-col items-center justify-center h-64 gap-3">
+          <p className="text-sm text-[#44546f] font-medium">{error ?? 'Ticket not found.'}</p>
+          <button onClick={() => { dispatch(clearAgentTicketDetail()); dispatch(fetchAgentTicket(ticketId)); }} className="text-xs text-[#0052cc] hover:underline">Retry</button>
+          <button onClick={() => navigate('/tickets/agent/all')} className="text-xs text-[#44546f] hover:underline">← Back to tickets</button>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // ── ticketId is guaranteed string beyond this point ───────────────────────
+
+  const t = agentTicketDetail;
+
+  const customerName = customerInfo?.full_name || 'Customer';
+  const productName  = t.product_id
+    ? products.find((p) => p.id === String(t.product_id))?.name ?? null
+    : null;
+
   const agentHasReplied = !!(thread?.conversations.some(
-    (c) => c.author_type === 'agent' && !c.is_internal
+    (c) => c.author_type === 'agent' && !c.is_internal,
   ));
-  const showAiDraft = !!(agentTicketDetail?.ai_draft) && !aiDraftDismissed && !agentHasReplied;
+  const showAiDraft = !!(t.ai_draft) && !aiDraftDismissed && !agentHasReplied;
 
   const merged: ThreadEntry[] = thread
-    ? [...thread.conversations.map((c) => ({ kind: 'message' as const, data: c })), ...thread.attachments.map((a) => ({ kind: 'attachment' as const, data: a }))].sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime())
+    ? [
+        ...thread.conversations.map((c) => ({ kind: 'message'    as const, data: c })),
+        ...thread.attachments.map((a)   => ({ kind: 'attachment' as const, data: a })),
+      ].sort((a, b) => new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime())
     : [];
 
   const onComment = async () => {
-    if (!ticketId) return;
     if (!commentText.trim()) { setCommentError('Cannot be empty'); return; }
     try {
       setSending(true); setCommentError('');
@@ -347,18 +373,22 @@ export const AgentTicketDetailPage: React.FC = () => {
       setEnhanceChanges(null);
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
       toast.success(isInternal ? 'Note saved' : 'Reply sent');
-      loadThread(); dispatch(fetchAgentTicket(ticketId));
+      loadThread();
+      dispatch(fetchAgentTicket(ticketId));
     } catch { toast.error('Failed to post'); } finally { setSending(false); }
   };
 
   const onStatusUpdate = async () => {
-    if (!ticketId || selectedStatus === agentTicketDetail?.status) return;
+    if (selectedStatus === agentTicketDetail.status) return;
     try {
       setUpdatingStatus(true);
       await ticketsService.updateAgentStatus(ticketId, selectedStatus, statusReason || undefined);
-      toast.success('Status updated'); setStatusReason(''); dispatch(fetchAgentTicket(ticketId));
-    } catch (err: any) { toast.error(err?.response?.data?.detail ?? 'Failed to update status'); }
-    finally { setUpdatingStatus(false); }
+      toast.success('Status updated');
+      setStatusReason('');
+      dispatch(fetchAgentTicket(ticketId));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to update status');
+    } finally { setUpdatingStatus(false); }
   };
 
   const handleUseDraft = (text: string) => {
@@ -374,26 +404,24 @@ export const AgentTicketDetailPage: React.FC = () => {
   };
 
   const handleUnassignConfirm = async (justification: string) => {
-    if (!ticketId) return;
     try {
       setUnassigning(true);
       await ticketsService.unassignTicket(ticketId, justification);
       toast.success('Ticket unassigned — team lead notified');
-      setShowUnassignModal(false); navigate('/tickets/agent/all');
-    } catch (err: any) { toast.error(err?.response?.data?.detail ?? 'Failed to unassign ticket'); }
-    finally { setUnassigning(false); }
+      setShowUnassignModal(false);
+      navigate('/tickets/agent/all');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to unassign ticket');
+    } finally { setUnassigning(false); }
   };
 
-  // ── Enhance handler ───────────────────────────────────────────────────────
   const handleEnhance = async () => {
-    if (!ticketId || !commentText.trim()) return;
+    if (!commentText.trim()) return;
     try {
-      setEnhancing(true);
-      setEnhanceChanges(null);
+      setEnhancing(true); setEnhanceChanges(null);
       const result = await ticketsService.enhanceReply(ticketId, commentText, isInternal ? 'internal' : 'reply');
       setCommentText(result.enhanced_text);
       setEnhanceChanges(result.changes_summary);
-      // Resize textarea to fit enhanced content
       setTimeout(() => {
         if (!textareaRef.current) return;
         textareaRef.current.style.height = 'auto';
@@ -402,59 +430,38 @@ export const AgentTicketDetailPage: React.FC = () => {
       toast.success('Reply enhanced');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? 'Failed to enhance reply');
-    } finally {
-      setEnhancing(false);
-    }
+    } finally { setEnhancing(false); }
   };
 
-  if (isLoading) return <MainLayout navItems={agentNav} pageTitle="Ticket Detail"><PageLoader /></MainLayout>;
-  if (!agentTicketDetail || error) {
-    return (
-      <MainLayout navItems={agentNav} pageTitle="Ticket Detail">
-        <div className="flex flex-col items-center justify-center h-64 gap-3">
-          <p className="text-sm text-[#44546f] font-medium">{error ?? 'Ticket not found.'}</p>
-          {ticketId && <button onClick={() => { dispatch(clearAgentTicketDetail()); dispatch(fetchAgentTicket(ticketId)); }} className="text-xs text-[#0052cc] hover:underline">Retry</button>}
-          <button onClick={() => navigate('/tickets/agent/all')} className="text-xs text-[#44546f] hover:underline">← Back to tickets</button>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  const t = agentTicketDetail;
-  const hasBreach = !!(t.sla_breached_at || t.response_sla_breached_at);
-  console.log('product_id:', t.product_id, typeof t.product_id);
-  console.log('products:', products);
-  console.log('productName:', productName);
-  const bothBreached = !!(t.sla_breached_at && t.response_sla_breached_at);
-  const slaBreachLabel = bothBreached ? 'Response & Resolution SLA Breached' : t.sla_breached_at ? 'Resolution SLA Breached' : 'Response SLA Breached';
+  const hasBreach      = !!(t.sla_breached_at || t.response_sla_breached_at);
+  const bothBreached   = !!(t.sla_breached_at && t.response_sla_breached_at);
+  const slaBreachLabel = bothBreached
+    ? 'Response & Resolution SLA Breached'
+    : t.sla_breached_at
+    ? 'Resolution SLA Breached'
+    : 'Response SLA Breached';
 
   const col1 = [
-    { label: 'Status', node: <StatusBadge status={t.status} /> },
+    { label: 'Status',   node: <StatusBadge status={t.status} /> },
     ...(t.priority ? [{ label: 'Priority', node: <PriorityLabel priority={t.priority} /> }] : []),
     ...(t.severity ? [{ label: 'Severity', node: <span className="flex items-center gap-1.5"><SeverityDot severity={t.severity} /><span className="capitalize">{t.severity}</span></span> }] : []),
     ...(t.tier_snapshot ? [{ label: 'Tier', node: <span>{t.tier_snapshot}</span> }] : []),
   ];
   const col2 = [
-    ...(productName ? [{ label: 'Product', node: <span>{productName}</span> }] : []),
-    ...(t.environment ? [{ label: 'Environment', node: <span className="capitalize">{t.environment}</span> }] : []),
-    ...(t.source ? [{ label: 'Source', node: <span className="capitalize">{t.source}</span> }] : []),
+    ...(productName     ? [{ label: 'Product',      node: <span>{productName}</span> }] : []),
+    ...(t.environment   ? [{ label: 'Environment',  node: <span className="capitalize">{t.environment}</span> }] : []),
+    ...(t.source        ? [{ label: 'Source',       node: <span className="capitalize">{t.source}</span> }] : []),
     ...(t.customer_priority ? [{ label: 'Cust. priority', node: <span className="capitalize">{t.customer_priority}</span> }] : []),
   ];
-
   const col3 = [
-    { label: 'Raised', node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
+    { label: 'Raised',  node: <span>{format(new Date(t.created_at), 'MMM d, yyyy · h:mm a')}</span> },
     { label: 'Reopens', node: <span>{t.reopen_count}</span> },
     ...(t.sla_response_due ? [{ label: 'Response due', node: (() => {
       const isBreached = !!t.response_sla_breached_at;
-      const isMet = !!t.first_response_at && !isBreached;
-      const isOverdue = !t.first_response_at && !isBreached && new Date() > new Date(t.sla_response_due);
+      const isMet      = !!t.first_response_at && !isBreached;
+      const isOverdue  = !t.first_response_at && !isBreached && new Date() > new Date(t.sla_response_due);
       return (
-        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap',
-          isBreached ? 'text-[#de350b] font-medium' :
-          isMet      ? 'text-green-600 font-medium' :
-          isOverdue  ? 'text-[#de350b]' :
-                       'text-[#172b4d]'
-        )}>
+        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap', isBreached ? 'text-[#de350b] font-medium' : isMet ? 'text-green-600 font-medium' : isOverdue ? 'text-[#de350b]' : 'text-[#172b4d]')}>
           {format(new Date(t.sla_response_due), 'MMM d, h:mm a')}
           {isBreached && <span className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-1 py-0.5 rounded font-semibold">Breached</span>}
           {isMet      && <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1 py-0.5 rounded font-semibold">Met</span>}
@@ -465,15 +472,10 @@ export const AgentTicketDetailPage: React.FC = () => {
     ...(t.first_response_at ? [{ label: 'First response', node: <span className="text-green-600">{format(new Date(t.first_response_at), 'MMM d, h:mm a')}</span> }] : []),
     ...(t.sla_resolve_due ? [{ label: 'Resolve due', node: (() => {
       const isBreached = !!t.sla_breached_at;
-      const isMet = !!t.resolved_at && !isBreached;
-      const isOverdue = !t.resolved_at && !isBreached && !['resolved','closed'].includes(t.status) && new Date() > new Date(t.sla_resolve_due);
+      const isMet      = !!t.resolved_at && !isBreached;
+      const isOverdue  = !t.resolved_at && !isBreached && !['resolved','closed'].includes(t.status) && new Date() > new Date(t.sla_resolve_due);
       return (
-        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap',
-          isBreached ? 'text-[#de350b] font-medium' :
-          isMet      ? 'text-green-600 font-medium' :
-          isOverdue  ? 'text-[#de350b]' :
-                       'text-[#172b4d]'
-        )}>
+        <span className={clsx('flex items-center gap-1.5 text-sm flex-wrap', isBreached ? 'text-[#de350b] font-medium' : isMet ? 'text-green-600 font-medium' : isOverdue ? 'text-[#de350b]' : 'text-[#172b4d]')}>
           {format(new Date(t.sla_resolve_due), 'MMM d, h:mm a')}
           {isBreached && <span className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-1 py-0.5 rounded font-semibold">Breached</span>}
           {isMet      && <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1 py-0.5 rounded font-semibold">Met</span>}
@@ -486,16 +488,62 @@ export const AgentTicketDetailPage: React.FC = () => {
 
   return (
     <MainLayout navItems={agentNav} pageTitle={t.ticket_number}>
-      {showUnassignModal && <UnassignModal ticketNumber={t.ticket_number} onConfirm={handleUnassignConfirm} onCancel={() => setShowUnassignModal(false)} loading={unassigning} />}
+      {showUnassignModal && (
+        <UnassignModal
+          ticketNumber={t.ticket_number}
+          onConfirm={handleUnassignConfirm}
+          onCancel={() => setShowUnassignModal(false)}
+          loading={unassigning}
+        />
+      )}
+
       <div className="h-[calc(100vh-56px)] bg-[#f4f5f7] overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="py-5 px-5 space-y-3">
+
+            {/* Title row */}
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[#44546f] text-xs font-mono mb-0.5">{t.ticket_number}</p>
                 <h1 className="text-[#172b4d] text-xl font-semibold leading-snug">{t.title ?? '(No title)'}</h1>
-                {customerInfo && <p className="text-[#6b778c] text-xs mt-1">{customerInfo.full_name}{customerInfo.email && <span className="ml-1.5 text-[#8993a4]">· {customerInfo.email}</span>}</p>}
+                {customerInfo && (
+                  <p className="text-[#6b778c] text-xs mt-1">
+                    {customerInfo.full_name}
+                    {customerInfo.email && <span className="ml-1.5 text-[#8993a4]">· {customerInfo.email}</span>}
+                  </p>
+                )}
               </div>
+
+              {/* Grouped-ticket banners */}
+              {(t as any).is_parent && (
+                <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🔑</span>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">This is a grouped ticket</p>
+                      <p className="text-xs text-amber-700">Resolving this ticket will automatically resolve all related customer tickets.</p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/tickets/agent/grouped/${t.id}`}
+                    className="flex-shrink-0 h-8 px-4 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+                  >
+                    Open grouped view →
+                  </Link>
+                </div>
+              )}
+
+              {(t as any).parent_ticket_id && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-xs text-blue-700">
+                    This ticket is grouped and being handled via a parent ticket. Status will update automatically when resolved.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                 {hasBreach ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
@@ -512,20 +560,36 @@ export const AgentTicketDetailPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Status bar */}
             <div className="flex items-center justify-end gap-3 flex-wrap">
               <span className="text-xs text-[#8993a4]">Update status:</span>
               <div className="w-px h-4 bg-[#dfe1e6] flex-shrink-0" />
               <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} className="h-8 px-2 rounded border border-[#dfe1e6] text-sm text-[#172b4d] bg-[#fafbfc] outline-none hover:border-[#b3bac5] focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors">
-                {['new','acknowledged','assigned','reopened'].includes(t.status) && <option value={t.status} disabled>{t.status.replace(/_/g,' ').replace(/\b\w/g,(c)=>c.toUpperCase())} (current)</option>}
+                {['new','acknowledged','assigned','reopened'].includes(t.status) && (
+                  <option value={t.status} disabled>{t.status.replace(/_/g,' ').replace(/\b\w/g,(c)=>c.toUpperCase())} (current)</option>
+                )}
                 {AGENT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
-              {showReasonInput && <input type="text" value={statusReason} onChange={(e) => setStatusReason(e.target.value)} placeholder="Add a note for the customer (optional)…" className="h-8 w-64 bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 text-sm text-[#172b4d] placeholder:text-[#8993a4] outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors" />}
-              <button onClick={onStatusUpdate} disabled={updatingStatus || selectedStatus === t.status || ['new','acknowledged','assigned','reopened'].includes(selectedStatus)} className="h-8 px-4 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 flex-shrink-0">
+              {showReasonInput && (
+                <input
+                  type="text"
+                  value={statusReason}
+                  onChange={(e) => setStatusReason(e.target.value)}
+                  placeholder="Add a note for the customer (optional)…"
+                  className="h-8 w-64 bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 text-sm text-[#172b4d] placeholder:text-[#8993a4] outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
+                />
+              )}
+              <button
+                onClick={onStatusUpdate}
+                disabled={updatingStatus || selectedStatus === t.status || ['new','acknowledged','assigned','reopened'].includes(selectedStatus)}
+                className="h-8 px-4 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 flex-shrink-0"
+              >
                 {updatingStatus && <div className="w-3 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
                 Apply
               </button>
             </div>
 
+            {/* Details */}
             <div className="bg-white border border-[#dfe1e6] rounded px-5 py-3">
               <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-2">Details</p>
               <div className="grid grid-cols-3 gap-0">
@@ -535,6 +599,7 @@ export const AgentTicketDetailPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Description */}
             <div className="bg-white border border-[#dfe1e6] rounded px-5 py-3">
               <p className="text-[#44546f] text-[11px] font-semibold uppercase tracking-widest mb-2">Description</p>
               {t.priority_overridden && t.override_reason && (
@@ -543,14 +608,33 @@ export const AgentTicketDetailPage: React.FC = () => {
                   <p className="text-xs text-[#172b4d]"><span className="font-semibold text-[#ff991f]">Priority override:</span> {t.override_reason}</p>
                 </div>
               )}
-              <p className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">{t.description ?? <span className="text-[#8993a4] italic">No description provided.</span>}</p>
+              <p className="text-[#172b4d] text-sm leading-relaxed whitespace-pre-wrap">
+                {t.description ?? <span className="text-[#8993a4] italic">No description provided.</span>}
+              </p>
             </div>
 
-            <AgentSLAPanel createdAt={t.created_at} slaResponseDue={t.sla_response_due} slaResolveDue={t.sla_resolve_due} firstResponseAt={t.first_response_at} resolvedAt={t.resolved_at} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onHoldStartedAt={(t as any).on_hold_started_at ?? null} onHoldAccumulated={(t as any).on_hold_duration_accumulated ?? 0} status={t.status} />
+            <AgentSLAPanel
+              createdAt={t.created_at}
+              slaResponseDue={t.sla_response_due}
+              slaResolveDue={t.sla_resolve_due}
+              firstResponseAt={t.first_response_at}
+              resolvedAt={t.resolved_at}
+              responseBreachedAt={t.response_sla_breached_at}
+              slaBreachedAt={t.sla_breached_at}
+              onHoldStartedAt={(t as any).on_hold_started_at ?? null}
+              onHoldAccumulated={(t as any).on_hold_duration_accumulated ?? 0}
+              status={t.status}
+            />
 
-            {(t.response_sla_breached_at || t.sla_breached_at) && <BreachJustificationPanel ticketId={t.id} responseBreachedAt={t.response_sla_breached_at} slaBreachedAt={t.sla_breached_at} onSubmitted={() => dispatch(fetchAgentTicket(ticketId!))} />}
+            {(t.response_sla_breached_at || t.sla_breached_at) && (
+              <BreachJustificationPanel
+                ticketId={t.id}
+                responseBreachedAt={t.response_sla_breached_at}
+                slaBreachedAt={t.sla_breached_at}
+                onSubmitted={() => dispatch(fetchAgentTicket(ticketId))}
+              />
+            )}
 
-            {/* AI Draft — only shown before the agent has sent any customer-facing reply */}
             {showAiDraft && (
               <div className="relative">
                 <AiDraftPanel draft={t.ai_draft!} onUse={handleUseDraft} />
@@ -564,6 +648,7 @@ export const AgentTicketDetailPage: React.FC = () => {
               </div>
             )}
 
+            {/* Activity / thread */}
             <div className="bg-white border border-[#dfe1e6] rounded flex flex-col overflow-hidden">
               <div className="px-6 pt-4 pb-2 flex-shrink-0 flex items-center justify-between">
                 <h3 className="text-[#172b4d] text-sm font-semibold">Activity</h3>
@@ -577,22 +662,45 @@ export const AgentTicketDetailPage: React.FC = () => {
               <div className="px-6 pb-3">
                 <div className="flex items-center mb-2">
                   <div className="flex items-center gap-1 p-0.5 bg-[#f4f5f7] rounded border border-[#dfe1e6]">
-                    <button onClick={() => { setIsInternal(false); setEnhanceChanges(null); }} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors', !isInternal ? 'bg-white text-[#0052cc] border border-[#dfe1e6] shadow-sm' : 'text-[#6b778c] hover:text-[#172b4d]')}>Reply to customer</button>
-                    <button onClick={() => { setIsInternal(true); setEnhanceChanges(null); }} className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1', isInternal ? 'bg-[#fff7e6] text-[#ff991f] border border-[#ffe2a8]' : 'text-[#6b778c] hover:text-[#172b4d]')}>
+                    <button
+                      onClick={() => { setIsInternal(false); setEnhanceChanges(null); }}
+                      className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors', !isInternal ? 'bg-white text-[#0052cc] border border-[#dfe1e6] shadow-sm' : 'text-[#6b778c] hover:text-[#172b4d]')}
+                    >
+                      Reply to customer
+                    </button>
+                    <button
+                      onClick={() => { setIsInternal(true); setEnhanceChanges(null); }}
+                      className={clsx('px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1', isInternal ? 'bg-[#fff7e6] text-[#ff991f] border border-[#ffe2a8]' : 'text-[#6b778c] hover:text-[#172b4d]')}
+                    >
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
                       Internal note
                     </button>
                   </div>
                 </div>
+
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#0052cc] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 select-none mt-0.5">{currentUserInitials}</div>
                   <div className="flex-1 min-w-0">
                     <div className={clsx('rounded border bg-white transition-all overflow-hidden', commentFocused ? (isInternal ? 'border-[#ff991f] shadow-[0_0_0_1px_#ff991f]' : 'border-[#0052cc] shadow-[0_0_0_1px_#0052cc]') : 'border-[#dfe1e6] hover:border-[#b3bac5]')}>
-                      <textarea ref={textareaRef} value={commentText}
-                        onFocus={() => { setCommentFocused(true); if (!inProgressFiredRef.current && agentTicketDetail?.status === 'assigned') { inProgressFiredRef.current = true; ticketsService.setInProgress(ticketId!).catch(() => {}); } }}
+                      <textarea
+                        ref={textareaRef}
+                        value={commentText}
+                        onFocus={() => {
+                          setCommentFocused(true);
+                          if (!inProgressFiredRef.current && agentTicketDetail.status === 'assigned') {
+                            inProgressFiredRef.current = true;
+                            ticketsService.setInProgress(ticketId).catch(() => {});
+                          }
+                        }}
                         onBlur={() => { if (!commentText.trim()) setCommentFocused(false); }}
-                        onChange={(e) => { setCommentText(e.target.value); setCommentError(''); setEnhanceChanges(null); e.target.style.height='auto'; e.target.style.height=`${e.target.scrollHeight}px`; }}
-                        onKeyDown={(e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); onComment(); } }}
+                        onChange={(e) => {
+                          setCommentText(e.target.value);
+                          setCommentError('');
+                          setEnhanceChanges(null);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${e.target.scrollHeight}px`;
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onComment(); } }}
                         placeholder={isInternal ? 'Internal note — only visible to agents…' : 'Write your response to the customer…'}
                         rows={commentFocused ? 3 : 1}
                         className="w-full text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-transparent px-3 py-2.5 resize-none outline-none leading-relaxed"
@@ -601,7 +709,6 @@ export const AgentTicketDetailPage: React.FC = () => {
                     </div>
                     {commentError && <p className="text-xs text-[#de350b] mt-1">{commentError}</p>}
 
-                    {/* Enhance changes summary */}
                     {enhanceChanges && (
                       <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-[#f3f0ff] border border-[#c0b6f2] rounded text-xs text-[#403294]">
                         <SparkleIcon className="w-3 h-3 flex-shrink-0 text-[#6554c0]" />
@@ -611,12 +718,14 @@ export const AgentTicketDetailPage: React.FC = () => {
 
                     {commentFocused && (
                       <div className="flex items-center gap-2 mt-2">
-                        <button onClick={onComment} disabled={sending || !commentText.trim()} className="px-3 py-1.5 rounded bg-[#0052cc] text-white text-sm font-medium hover:bg-[#0065ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                        <button
+                          onClick={onComment}
+                          disabled={sending || !commentText.trim()}
+                          className="px-3 py-1.5 rounded bg-[#0052cc] text-white text-sm font-medium hover:bg-[#0065ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                        >
                           {sending && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
                           {isInternal ? 'Save note' : 'Send reply'}
                         </button>
-
-                        {/* ── Enhance button ── */}
                         <button
                           onClick={handleEnhance}
                           disabled={enhancing || !commentText.trim()}
@@ -634,9 +743,15 @@ export const AgentTicketDetailPage: React.FC = () => {
                           }
                           {enhancing ? 'Enhancing…' : 'Enhance'}
                         </button>
-
-                        <button onClick={() => { setCommentText(''); setCommentError(''); setCommentFocused(false); setEnhanceChanges(null); }} className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors">Cancel</button>
-                        <span className="ml-auto text-xs text-[#8993a4]"><kbd className="border border-[#dfe1e6] bg-[#f4f5f7] rounded px-1 py-0.5 text-[10px]">Enter</kbd> to send</span>
+                        <button
+                          onClick={() => { setCommentText(''); setCommentError(''); setCommentFocused(false); setEnhanceChanges(null); }}
+                          className="px-3 py-1.5 text-[#44546f] text-sm rounded hover:bg-[#ebecf0] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <span className="ml-auto text-xs text-[#8993a4]">
+                          <kbd className="border border-[#dfe1e6] bg-[#f4f5f7] rounded px-1 py-0.5 text-[10px]">Enter</kbd> to send
+                        </span>
                       </div>
                     )}
                   </div>
@@ -646,7 +761,9 @@ export const AgentTicketDetailPage: React.FC = () => {
               {merged.length > 0 && <div className="border-t border-[#ebecf0]" />}
               <div className="max-h-[400px] overflow-y-auto px-6">
                 {threadLoading ? (
-                  <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-[#0052cc] border-t-transparent rounded-full animate-full animate-spin" /></div>
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-5 h-5 border-2 border-[#0052cc] border-t-transparent rounded-full animate-spin" />
+                  </div>
                 ) : merged.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <p className="text-[#8993a4] text-sm">No messages yet on this ticket.</p>
@@ -664,6 +781,7 @@ export const AgentTicketDetailPage: React.FC = () => {
                 <div ref={threadEndRef} />
               </div>
             </div>
+
           </div>
         </div>
       </div>

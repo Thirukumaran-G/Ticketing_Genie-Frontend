@@ -23,12 +23,16 @@ const TicketDetailPage = lazy(() => import('../features/tickets/components/custo
 const AgentQueuePage      = lazy(() => import('../features/tickets/components/agent/AgentQueuePage').then(m => ({ default: m.AgentQueuePage })));
 const AgentAllTicketsPage = lazy(() => import('../features/tickets/components/agent/AgentAllTicketsPage').then(m => ({ default: m.AgentAllTicketsPage })));
 const AgentDetailPage     = lazy(() => import('../features/tickets/components/agent/AgentTicketDetailPage').then(m => ({ default: m.AgentTicketDetailPage })));
+const AgentGroupedListPage   = lazy(() => import('../features/tickets/components/agent/AgentGroupedTicketsListPage').then(m => ({ default: m.AgentGroupedTicketsListPage })));
+const AgentGroupedDetailPage = lazy(() => import('../features/tickets/components/agent/AgentGroupedTicketPage').then(m => ({ default: m.AgentGroupedTicketPage })));
 
 // ── Team Lead ─────────────────────────────────────────────────────────────────
 const TLQueuePage        = lazy(() => import('../features/tickets/components/teamlead/TLQueuePage').then(m => ({ default: m.TLQueuePage })));
 const TLTicketsPage      = lazy(() => import('../features/tickets/components/teamlead/TLTicketsPage').then(m => ({ default: m.TLTicketsPage })));
 const TLOverviewPage     = lazy(() => import('../features/tickets/components/teamlead/TLOverviewPage').then(m => ({ default: m.TLOverviewPage })));
 const TLTicketDetailPage = lazy(() => import('../features/tickets/components/teamlead/TLTicketDetailPage').then(m => ({ default: m.TLTicketDetailPage })));
+const TLGroupsPage = lazy(() => import('../features/tickets/components/teamlead/TLTicketGroupsPage').then(m => ({ default: m.TLTicketGroupsPage })));
+
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 const AdminDashboard      = lazy(() => import('../features/admin/components/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
@@ -91,14 +95,17 @@ export const AppRouter: React.FC = () => (
         <Route path="/tickets/:ticketId" element={<ProtectedRoute roles={[ROLES.CUSTOMER]}><TicketDetailPage /></ProtectedRoute>} />
 
         {/* Agent */}
-        <Route path="/tickets/agent/all"       element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentAllTicketsPage /></ProtectedRoute>} />
-        <Route path="/tickets/agent/:ticketId" element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentDetailPage /></ProtectedRoute>} />
+        <Route path="/tickets/agent/all"                         element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentAllTicketsPage /></ProtectedRoute>} />
+        <Route path="/tickets/agent/grouped"                     element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentGroupedListPage /></ProtectedRoute>} />
+        <Route path="/tickets/agent/grouped/:ticketId"           element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentGroupedDetailPage /></ProtectedRoute>} />
+        <Route path="/tickets/agent/:ticketId"                   element={<ProtectedRoute roles={[ROLES.AGENT]}><AgentDetailPage /></ProtectedRoute>} />
 
         {/* Team Lead */}
-        <Route path="/tickets/team"               element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLQueuePage /></ProtectedRoute>} />
-        <Route path="/tickets/team/all"           element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLTicketsPage /></ProtectedRoute>} />
-        <Route path="/tickets/team/overview"      element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLOverviewPage /></ProtectedRoute>} />
-        <Route path="/tickets/teamlead/:ticketId" element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLTicketDetailPage /></ProtectedRoute>} />
+        <Route path="/tickets/team"                              element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLQueuePage /></ProtectedRoute>} />
+        <Route path="/tickets/team/all"                          element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLTicketsPage /></ProtectedRoute>} />
+        <Route path="/tickets/team/overview"                     element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLOverviewPage /></ProtectedRoute>} />
+        <Route path="/tickets/groups"                            element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLGroupsPage /></ProtectedRoute>} />
+        <Route path="/tickets/teamlead/:ticketId"                element={<ProtectedRoute roles={[ROLES.TEAM_LEAD]}><TLTicketDetailPage /></ProtectedRoute>} />
 
         {/* Admin */}
         <Route path="/admin/dashboard"      element={<ProtectedRoute roles={[ROLES.ADMIN]}><AdminDashboard /></ProtectedRoute>} />

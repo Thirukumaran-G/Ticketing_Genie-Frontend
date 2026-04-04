@@ -159,7 +159,7 @@ export const SimilarTicketsPanel: React.FC<Props> = ({ ticketId }) => {
   const onRemoveFromGroup = async (groupId: string, removeTicketId: string, ticketNumber: string) => {
     try {
       setRemovingTicket(removeTicketId);
-      await ticketsService.removeTicketFromGroup(groupId, removeTicketId);
+      await ticketsService.removeGroupMember(groupId, removeTicketId);
       toast.success(`${ticketNumber} removed from group`);
       await loadGroups();
     } catch (err: any) {

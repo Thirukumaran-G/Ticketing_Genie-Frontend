@@ -5,13 +5,12 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { MainLayout } from '../../../../layouts/MainLayout';
-import { PageLoader } from '../../../../components/ui/index';
-import { StatusBadge, PriorityLabel, SeverityDot, SLABreachPill } from '../shared/TicketBadges';
+import { StatusBadge, PriorityLabel } from '../shared/TicketBadges';
 import { useAppSelector } from '../../../../app/store';
 import { tlNav } from './teamleadNav';
 import { ticketsService } from '../../services/ticketsService';
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface GroupMember {
   ticket_id:        string;
@@ -22,6 +21,7 @@ interface GroupMember {
   severity:         string | null;
   similarity_score: number;
   added_at:         string;
+  is_parent:        boolean;
 }
 
 interface TicketGroup {
@@ -29,7 +29,7 @@ interface TicketGroup {
   name:              string | null;
   confirmed_by_lead: boolean;
   confirmed_at:      string | null;
-  confirmed_by:      string | null;
+  parent_ticket_id:  string | null;
   member_count:      number;
   members:           GroupMember[];
   created_at:        string;
@@ -46,7 +46,6 @@ const SimilarityBadge: React.FC<{ score: number }> = ({ score }) => {
     pct >= 90 ? 'bg-red-50 text-red-700 border-red-200' :
     pct >= 80 ? 'bg-orange-50 text-orange-700 border-orange-200' :
     'bg-blue-50 text-blue-700 border-blue-200';
-
   return (
     <span className={clsx(
       'inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold',
@@ -57,15 +56,21 @@ const SimilarityBadge: React.FC<{ score: number }> = ({ score }) => {
   );
 };
 
-// ── Confirm Group Modal ───────────────────────────────────────────────────────
+// ── Set Parent Modal ──────────────────────────────────────────────────────────
 
-const ConfirmModal: React.FC<{
+const SetParentModal: React.FC<{
   group:     TicketGroup;
-  onConfirm: (name: string) => void;
+  onConfirm: (parentId: string) => void;
   onClose:   () => void;
   loading:   boolean;
 }> = ({ group, onConfirm, onClose, loading }) => {
-  const [name, setName] = useState(group.name ?? '');
+  // Default to highest priority member
+  const sorted = [...group.members].sort((a, b) => {
+    const pri = { P0: 0, P1: 1, P2: 2, P3: 3 };
+    return (pri[a.priority as keyof typeof pri] ?? 9) -
+           (pri[b.priority as keyof typeof pri] ?? 9);
+  });
+  const [selected, setSelected] = useState(sorted[0]?.ticket_id ?? '');
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -80,42 +85,41 @@ const ConfirmModal: React.FC<{
     >
       <div className="w-full max-w-md bg-white border border-[#dfe1e6] rounded-xl shadow-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-[#dfe1e6]">
-          <h3 className="text-[#172b4d] text-sm font-semibold">Confirm similar ticket group</h3>
+          <h3 className="text-[#172b4d] text-sm font-semibold">Select parent ticket</h3>
           <p className="text-[#6b778c] text-xs mt-0.5">
-            {group.member_count} ticket{group.member_count !== 1 ? 's' : ''} in this group
+            The agent will only see and work on this ticket. Resolving it closes all others.
           </p>
         </div>
-        <div className="px-6 py-5 space-y-4">
-          <p className="text-sm text-[#42526e] leading-relaxed">
-            Confirming this group means you've verified these tickets share the same root cause.
-            This unlocks bulk assign and bulk resolve actions.
-          </p>
-          <div>
-            <label className="block text-xs font-semibold text-[#6b778c] uppercase tracking-wide mb-1.5">
-              Group name
-              <span className="ml-1 text-[#8993a4] font-normal normal-case">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Payment gateway outage — Jan 25"
-              autoFocus
-              className="w-full h-8 px-3 rounded border border-[#dfe1e6] text-sm text-[#172b4d] placeholder:text-[#8993a4] bg-[#fafbfc] outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
-            />
-          </div>
-          <div className="bg-[#f4f5f7] border border-[#dfe1e6] rounded px-3 py-2">
-            <p className="text-xs text-[#44546f] font-semibold mb-1">Tickets in group:</p>
-            <div className="space-y-0.5 max-h-32 overflow-y-auto">
-              {group.members.map((m) => (
-                <div key={m.ticket_id} className="flex items-center gap-2 text-xs text-[#172b4d]">
-                  <span className="font-mono text-[#44546f]">{m.ticket_number}</span>
-                  <span className="truncate flex-1">{m.title ?? '(no title)'}</span>
+        <div className="px-6 py-4 space-y-2 max-h-72 overflow-y-auto">
+          {sorted.map((m) => (
+            <label
+              key={m.ticket_id}
+              className={clsx(
+                'flex items-start gap-3 p-3 rounded border cursor-pointer transition-all',
+                selected === m.ticket_id
+                  ? 'border-[#0052cc] bg-[#deebff]'
+                  : 'border-[#dfe1e6] hover:border-[#b3bac5] bg-[#fafbfc]',
+              )}
+            >
+              <input
+                type="radio"
+                name="parent"
+                value={m.ticket_id}
+                checked={selected === m.ticket_id}
+                onChange={() => setSelected(m.ticket_id)}
+                className="mt-0.5 flex-shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono text-[#0052cc]">{m.ticket_number}</span>
+                  {m.priority && <PriorityLabel priority={m.priority} />}
+                  <StatusBadge status={m.status} />
                   <SimilarityBadge score={m.similarity_score} />
                 </div>
-              ))}
-            </div>
-          </div>
+                <p className="text-xs text-[#44546f] truncate mt-0.5">{m.title ?? '(no title)'}</p>
+              </div>
+            </label>
+          ))}
         </div>
         <div className="px-6 py-3.5 border-t border-[#dfe1e6] bg-[#f4f5f7] flex items-center justify-end gap-2">
           <button
@@ -126,14 +130,12 @@ const ConfirmModal: React.FC<{
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(name)}
-            disabled={loading}
+            onClick={() => onConfirm(selected)}
+            disabled={loading || !selected}
             className="h-8 px-4 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-medium disabled:opacity-40 transition-colors flex items-center gap-1.5"
           >
-            {loading && (
-              <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />
-            )}
-            Confirm group
+            {loading && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+            Set as parent
           </button>
         </div>
       </div>
@@ -141,20 +143,19 @@ const ConfirmModal: React.FC<{
   );
 };
 
-// ── Bulk Assign Modal ─────────────────────────────────────────────────────────
+// ── Assign Parent Modal ───────────────────────────────────────────────────────
 
-const BulkAssignModal: React.FC<{
-  group:      TicketGroup;
-  agents:     { value: string; label: string }[];
-  onConfirm:  (agentId: string, message: string) => void;
-  onClose:    () => void;
-  loading:    boolean;
+const AssignParentModal: React.FC<{
+  group:     TicketGroup;
+  agents:    { value: string; label: string }[];
+  onConfirm: (agentId: string, note: string) => void;
+  onClose:   () => void;
+  loading:   boolean;
 }> = ({ group, agents, onConfirm, onClose, loading }) => {
-  const [agentId, setAgentId]   = useState('');
-  const [message, setMessage]   = useState('');
-  const openTickets             = group.members.filter(
-    (m) => !['resolved', 'closed'].includes(m.status)
-  );
+  const [agentId, setAgentId] = useState('');
+  const [note, setNote]       = useState('');
+
+  const parentMember = group.members.find((m) => m.ticket_id === group.parent_ticket_id);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -169,27 +170,24 @@ const BulkAssignModal: React.FC<{
     >
       <div className="w-full max-w-md bg-white border border-[#dfe1e6] rounded-xl shadow-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-[#dfe1e6]">
-          <h3 className="text-[#172b4d] text-sm font-semibold">Bulk assign tickets</h3>
+          <h3 className="text-[#172b4d] text-sm font-semibold">Assign parent ticket to agent</h3>
           <p className="text-[#6b778c] text-xs mt-0.5">
-            {openTickets.length} open ticket{openTickets.length !== 1 ? 's' : ''} will be assigned
+            Agent will handle {group.member_count} customer{group.member_count !== 1 ? 's' : ''} via one ticket
           </p>
         </div>
         <div className="px-6 py-5 space-y-4">
-
-          {/* Open ticket preview */}
-          <div className="bg-[#f4f5f7] border border-[#dfe1e6] rounded px-3 py-2 max-h-32 overflow-y-auto">
-            {openTickets.length === 0 ? (
-              <p className="text-xs text-[#8993a4]">No open tickets to assign.</p>
-            ) : openTickets.map((m) => (
-              <div key={m.ticket_id} className="flex items-center gap-2 py-0.5 text-xs text-[#172b4d]">
-                <span className="font-mono text-[#44546f]">{m.ticket_number}</span>
-                <StatusBadge status={m.status} />
-                <span className="truncate flex-1 text-[#44546f]">{m.title ?? '(no title)'}</span>
+          {parentMember && (
+            <div className="bg-[#f4f5f7] border border-[#dfe1e6] rounded px-3 py-2">
+              <p className="text-[10px] text-[#6b778c] font-semibold uppercase tracking-wide mb-1">
+                Parent ticket
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-[#0052cc]">{parentMember.ticket_number}</span>
+                {parentMember.priority && <PriorityLabel priority={parentMember.priority} />}
+                <span className="text-xs text-[#44546f] truncate">{parentMember.title}</span>
               </div>
-            ))}
-          </div>
-
-          {/* Agent selector */}
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold text-[#6b778c] uppercase tracking-wide mb-1.5">
               Assign to agent <span className="text-[#de350b]">*</span>
@@ -205,21 +203,20 @@ const BulkAssignModal: React.FC<{
               ))}
             </select>
           </div>
-
-          {/* Internal message */}
           <div>
             <label className="block text-xs font-semibold text-[#6b778c] uppercase tracking-wide mb-1.5">
-              Message to agent <span className="text-[#de350b]">*</span>
+              Note to agent <span className="text-[#de350b]">*</span>
             </label>
             <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
               placeholder="Explain the root cause and what the agent should focus on…"
               rows={3}
+              autoFocus
               className="w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] placeholder:text-[#8993a4] resize-none outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
             />
             <p className="text-xs text-[#8993a4] mt-1">
-              Posted as internal note on every assigned ticket. Agent notified via preference.
+              Posted as internal note on the parent ticket.
             </p>
           </div>
         </div>
@@ -232,14 +229,12 @@ const BulkAssignModal: React.FC<{
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(agentId, message)}
-            disabled={loading || !agentId || message.trim().length < 10 || openTickets.length === 0}
+            onClick={() => onConfirm(agentId, note)}
+            disabled={loading || !agentId || note.trim().length < 10}
             className="h-8 px-4 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
           >
-            {loading && (
-              <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />
-            )}
-            Assign {openTickets.length} ticket{openTickets.length !== 1 ? 's' : ''}
+            {loading && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+            Assign parent ticket
           </button>
         </div>
       </div>
@@ -247,18 +242,15 @@ const BulkAssignModal: React.FC<{
   );
 };
 
-// ── Bulk Resolve Modal ────────────────────────────────────────────────────────
+// ── Broadcast Modal ───────────────────────────────────────────────────────────
 
-const BulkResolveModal: React.FC<{
+const BroadcastModal: React.FC<{
   group:     TicketGroup;
   onConfirm: (message: string) => void;
   onClose:   () => void;
   loading:   boolean;
 }> = ({ group, onConfirm, onClose, loading }) => {
   const [message, setMessage] = useState('');
-  const openTickets           = group.members.filter(
-    (m) => !['resolved', 'closed'].includes(m.status)
-  );
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -273,29 +265,82 @@ const BulkResolveModal: React.FC<{
     >
       <div className="w-full max-w-md bg-white border border-[#dfe1e6] rounded-xl shadow-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-[#dfe1e6]">
-          <h3 className="text-[#172b4d] text-sm font-semibold">Bulk resolve tickets</h3>
+          <h3 className="text-[#172b4d] text-sm font-semibold">Broadcast update to customers</h3>
           <p className="text-[#6b778c] text-xs mt-0.5">
-            {openTickets.length} customer{openTickets.length !== 1 ? 's' : ''} will be notified
+            {group.member_count} customer{group.member_count !== 1 ? 's' : ''} will receive this message
+          </p>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          <p className="text-xs text-[#42526e] leading-relaxed">
+            Each customer receives this as an update on their own ticket number.
+            They will not know other customers are affected.
+          </p>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="e.g. We are aware of the issue and our team is actively working on a fix. We expect to resolve this within 2 hours…"
+            rows={4}
+            autoFocus
+            className="w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] placeholder:text-[#8993a4] resize-none outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
+          />
+        </div>
+        <div className="px-6 py-3.5 border-t border-[#dfe1e6] bg-[#f4f5f7] flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="h-8 px-4 rounded text-sm text-[#42526e] hover:bg-[#ebecf0] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(message)}
+            disabled={loading || message.trim().length < 10}
+            className="h-8 px-4 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            {loading && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+            Send to {group.member_count} customer{group.member_count !== 1 ? 's' : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Resolve Group Modal ───────────────────────────────────────────────────────
+
+const ResolveGroupModal: React.FC<{
+  group:     TicketGroup;
+  onConfirm: (message: string) => void;
+  onClose:   () => void;
+  loading:   boolean;
+}> = ({ group, onConfirm, onClose, loading }) => {
+  const [message, setMessage] = useState('');
+  const openCount = group.members.filter(
+    (m) => !['resolved', 'closed'].includes(m.status)
+  ).length;
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-md bg-white border border-[#dfe1e6] rounded-xl shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#dfe1e6]">
+          <h3 className="text-[#172b4d] text-sm font-semibold">Resolve entire group</h3>
+          <p className="text-[#6b778c] text-xs mt-0.5">
+            {openCount} customer{openCount !== 1 ? 's' : ''} will be notified
           </p>
         </div>
         <div className="px-6 py-5 space-y-4">
-
-          {/* Preview */}
-          <div className="bg-[#f4f5f7] border border-[#dfe1e6] rounded px-3 py-2 max-h-28 overflow-y-auto">
-            {openTickets.length === 0 ? (
-              <p className="text-xs text-[#8993a4]">No open tickets to resolve.</p>
-            ) : openTickets.map((m) => (
-              <div key={m.ticket_id} className="flex items-center gap-2 py-0.5 text-xs text-[#172b4d]">
-                <span className="font-mono text-[#44546f]">{m.ticket_number}</span>
-                <span className="truncate flex-1 text-[#44546f]">{m.title ?? '(no title)'}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Resolution message */}
           <div>
             <label className="block text-xs font-semibold text-[#6b778c] uppercase tracking-wide mb-1.5">
-              Resolution message to customers <span className="text-[#de350b]">*</span>
+              Resolution message <span className="text-[#de350b]">*</span>
             </label>
             <textarea
               value={message}
@@ -306,17 +351,15 @@ const BulkResolveModal: React.FC<{
               className="w-full bg-[#fafbfc] border border-[#dfe1e6] rounded px-3 py-2 text-sm text-[#172b4d] placeholder:text-[#8993a4] resize-none outline-none focus:border-[#4c9aff] focus:ring-2 focus:ring-[#4c9aff]/20 transition-colors"
             />
             <p className="text-xs text-[#8993a4] mt-1">
-              Sent to each customer via their notification preference.
+              Sent to each customer on their own ticket.
             </p>
           </div>
-
-          {/* Warning */}
           <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded">
             <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
             <p className="text-xs text-orange-700">
-              This will resolve all open tickets in the group at once. This cannot be undone in bulk.
+              This resolves all open tickets in the group at once and cannot be undone in bulk.
             </p>
           </div>
         </div>
@@ -330,13 +373,11 @@ const BulkResolveModal: React.FC<{
           </button>
           <button
             onClick={() => onConfirm(message)}
-            disabled={loading || message.trim().length < 10 || openTickets.length === 0}
+            disabled={loading || message.trim().length < 10 || openCount === 0}
             className="h-8 px-4 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
           >
-            {loading && (
-              <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />
-            )}
-            Resolve {openTickets.length} ticket{openTickets.length !== 1 ? 's' : ''}
+            {loading && <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />}
+            Resolve {openCount} ticket{openCount !== 1 ? 's' : ''}
           </button>
         </div>
       </div>
@@ -347,66 +388,83 @@ const BulkResolveModal: React.FC<{
 // ── Group Card ────────────────────────────────────────────────────────────────
 
 const GroupCard: React.FC<{
-  group:        TicketGroup;
-  agents:       { value: string; label: string }[];
-  onRefresh:    () => void;
+  group:     TicketGroup;
+  agents:    { value: string; label: string }[];
+  onRefresh: () => void;
 }> = ({ group, agents, onRefresh }) => {
-  const [expanded, setExpanded]         = useState(false);
-  const [confirmOpen, setConfirmOpen]   = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
-  const [assignOpen, setAssignOpen]     = useState(false);
-  const [assignLoading, setAssignLoading] = useState(false);
-  const [resolveOpen, setResolveOpen]   = useState(false);
-  const [resolveLoading, setResolveLoading] = useState(false);
-  const [removingId, setRemovingId]     = useState<string | null>(null);
+  const [expanded, setExpanded]               = useState(false);
+  const [setParentOpen, setSetParentOpen]     = useState(false);
+  const [setParentLoading, setSetParentLoading] = useState(false);
+  const [assignOpen, setAssignOpen]           = useState(false);
+  const [assignLoading, setAssignLoading]     = useState(false);
+  const [broadcastOpen, setBroadcastOpen]     = useState(false);
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
+  const [resolveOpen, setResolveOpen]         = useState(false);
+  const [resolveLoading, setResolveLoading]   = useState(false);
+  const [removingId, setRemovingId]           = useState<string | null>(null);
 
-  const openTickets = group.members.filter(
+  const parentMember = group.members.find(
+    (m) => m.ticket_id === group.parent_ticket_id
+  );
+  const openCount = group.members.filter(
     (m) => !['resolved', 'closed'].includes(m.status)
+  ).length;
+  const isAssigned = group.members.some(
+    (m) => m.is_parent && m.status === 'assigned'
   );
 
-  const onConfirmGroup = async (name: string) => {
+  const onSetParent = async (parentTicketId: string) => {
     try {
-      setConfirmLoading(true);
-      await ticketsService.confirmTicketGroup(group.id, name || undefined);
-      toast.success('Group confirmed');
-      setConfirmOpen(false);
+      setSetParentLoading(true);
+      await ticketsService.setGroupParent(group.id, parentTicketId);
+      toast.success('Parent ticket set — children frozen to in progress');
+      setSetParentOpen(false);
       onRefresh();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Failed to confirm group');
+      toast.error(err?.response?.data?.detail ?? 'Failed to set parent');
     } finally {
-      setConfirmLoading(false);
+      setSetParentLoading(false);
     }
   };
 
-  const onBulkAssign = async (agentId: string, message: string) => {
+  const onAssignParent = async (agentId: string, note: string) => {
     try {
       setAssignLoading(true);
-      const result = await ticketsService.bulkAssignGroup(group.id, agentId, message);
-      toast.success(
-        `${result.assigned} ticket${result.assigned !== 1 ? 's' : ''} assigned` +
-        (result.skipped > 0 ? ` (${result.skipped} skipped)` : '')
-      );
+      await ticketsService.assignGroupParent(group.id, agentId, note);
+      toast.success('Parent ticket assigned to agent');
       setAssignOpen(false);
       onRefresh();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Bulk assign failed');
+      toast.error(err?.response?.data?.detail ?? 'Failed to assign');
     } finally {
       setAssignLoading(false);
     }
   };
 
-  const onBulkResolve = async (message: string) => {
+  const onBroadcast = async (message: string) => {
+    try {
+      setBroadcastLoading(true);
+      const result = await ticketsService.broadcastToGroup(group.id, message);
+      toast.success(`Message sent to ${result.notified} customer${result.notified !== 1 ? 's' : ''}`);
+      setBroadcastOpen(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Broadcast failed');
+    } finally {
+      setBroadcastLoading(false);
+    }
+  };
+
+  const onResolveGroup = async (message: string) => {
     try {
       setResolveLoading(true);
-      const result = await ticketsService.bulkResolveGroup(group.id, message);
+      const result = await ticketsService.resolveGroup(group.id, message);
       toast.success(
-        `${result.resolved} ticket${result.resolved !== 1 ? 's' : ''} resolved` +
-        (result.skipped > 0 ? ` (${result.skipped} skipped)` : '')
+        `${result.resolved} ticket${result.resolved !== 1 ? 's' : ''} resolved`
       );
       setResolveOpen(false);
       onRefresh();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Bulk resolve failed');
+      toast.error(err?.response?.data?.detail ?? 'Resolve failed');
     } finally {
       setResolveLoading(false);
     }
@@ -415,11 +473,11 @@ const GroupCard: React.FC<{
   const onRemoveMember = async (ticketId: string, ticketNumber: string) => {
     try {
       setRemovingId(ticketId);
-      await ticketsService.removeTicketFromGroup(group.id, ticketId);
+      await ticketsService.removeGroupMember(group.id, ticketId);
       toast.success(`${ticketNumber} removed from group`);
       onRefresh();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Failed to remove ticket');
+      toast.error(err?.response?.data?.detail ?? 'Failed to remove');
     } finally {
       setRemovingId(null);
     }
@@ -427,27 +485,35 @@ const GroupCard: React.FC<{
 
   return (
     <>
-      {confirmOpen && (
-        <ConfirmModal
+      {setParentOpen && (
+        <SetParentModal
           group={group}
-          onConfirm={onConfirmGroup}
-          onClose={() => setConfirmOpen(false)}
-          loading={confirmLoading}
+          onConfirm={onSetParent}
+          onClose={() => setSetParentOpen(false)}
+          loading={setParentLoading}
         />
       )}
       {assignOpen && (
-        <BulkAssignModal
+        <AssignParentModal
           group={group}
           agents={agents}
-          onConfirm={onBulkAssign}
+          onConfirm={onAssignParent}
           onClose={() => setAssignOpen(false)}
           loading={assignLoading}
         />
       )}
-      {resolveOpen && (
-        <BulkResolveModal
+      {broadcastOpen && (
+        <BroadcastModal
           group={group}
-          onConfirm={onBulkResolve}
+          onConfirm={onBroadcast}
+          onClose={() => setBroadcastOpen(false)}
+          loading={broadcastLoading}
+        />
+      )}
+      {resolveOpen && (
+        <ResolveGroupModal
+          group={group}
+          onConfirm={onResolveGroup}
           onClose={() => setResolveOpen(false)}
           loading={resolveLoading}
         />
@@ -455,21 +521,15 @@ const GroupCard: React.FC<{
 
       <div className={clsx(
         'bg-white border rounded-xl overflow-hidden transition-all',
-        group.confirmed_by_lead
-          ? 'border-green-200'
-          : 'border-[#dfe1e6]',
+        group.confirmed_by_lead ? 'border-green-200' : 'border-[#dfe1e6]',
       )}>
-
-        {/* Card header */}
         <div className="px-5 py-4">
           <div className="flex items-start gap-3">
 
-            {/* Confirmed / unconfirmed indicator */}
+            {/* Status indicator */}
             <div className={clsx(
               'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5',
-              group.confirmed_by_lead
-                ? 'bg-green-100'
-                : 'bg-orange-100',
+              group.confirmed_by_lead ? 'bg-green-100' : 'bg-orange-100',
             )}>
               {group.confirmed_by_lead ? (
                 <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -497,10 +557,15 @@ const GroupCard: React.FC<{
                 </span>
                 <span className="text-xs text-[#8993a4]">
                   {group.member_count} ticket{group.member_count !== 1 ? 's' : ''}
-                  {openTickets.length > 0 && (
-                    <span className="ml-1 text-orange-500">· {openTickets.length} open</span>
+                  {openCount > 0 && (
+                    <span className="ml-1 text-orange-500">· {openCount} open</span>
                   )}
                 </span>
+                {parentMember && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border text-amber-700 bg-amber-50 border-amber-200">
+                    🔑 Parent: {parentMember.ticket_number}
+                  </span>
+                )}
               </div>
               <p className="text-[#6b778c] text-xs mt-0.5">
                 Detected {formatDistanceToNow(new Date(group.created_at), { addSuffix: true })}
@@ -513,31 +578,66 @@ const GroupCard: React.FC<{
             </div>
 
             {/* Action buttons */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+              {/* Step 1: Confirm */}
               {!group.confirmed_by_lead && (
                 <button
-                  onClick={() => setConfirmOpen(true)}
+                  onClick={async () => {
+                    try {
+                      await ticketsService.confirmTicketGroup(group.id);
+                      toast.success('Group confirmed');
+                      onRefresh();
+                    } catch (err: any) {
+                      toast.error(err?.response?.data?.detail ?? 'Failed to confirm');
+                    }
+                  }}
                   className="h-7 px-3 rounded border border-[#dfe1e6] text-xs text-[#42526e] hover:bg-[#f4f5f7] hover:border-[#b3bac5] transition-colors font-medium"
                 >
                   Confirm
                 </button>
               )}
-              {group.confirmed_by_lead && openTickets.length > 0 && (
-                <>
-                  <button
-                    onClick={() => setAssignOpen(true)}
-                    className="h-7 px-3 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-xs font-medium transition-colors"
-                  >
-                    Bulk assign
-                  </button>
-                  <button
-                    onClick={() => setResolveOpen(true)}
-                    className="h-7 px-3 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
-                  >
-                    Bulk resolve
-                  </button>
-                </>
+
+              {/* Step 2: Set parent */}
+              {group.confirmed_by_lead && !group.parent_ticket_id && (
+                <button
+                  onClick={() => setSetParentOpen(true)}
+                  className="h-7 px-3 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition-colors"
+                >
+                  Set parent
+                </button>
               )}
+
+              {/* Step 3: Assign parent */}
+              {group.confirmed_by_lead && group.parent_ticket_id && !isAssigned && (
+                <button
+                  onClick={() => setAssignOpen(true)}
+                  className="h-7 px-3 rounded bg-[#0052cc] hover:bg-[#0065ff] text-white text-xs font-medium transition-colors"
+                >
+                  Assign parent
+                </button>
+              )}
+
+              {/* Broadcast — available once confirmed */}
+              {group.confirmed_by_lead && (
+                <button
+                  onClick={() => setBroadcastOpen(true)}
+                  className="h-7 px-3 rounded border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 text-xs font-medium transition-colors"
+                >
+                  Broadcast
+                </button>
+              )}
+
+              {/* Resolve group — available once parent set */}
+              {group.confirmed_by_lead && group.parent_ticket_id && openCount > 0 && (
+                <button
+                  onClick={() => setResolveOpen(true)}
+                  className="h-7 px-3 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
+                >
+                  Resolve all
+                </button>
+              )}
+
+              {/* Expand/collapse */}
               <button
                 onClick={() => setExpanded((v) => !v)}
                 className="h-7 w-7 flex items-center justify-center rounded border border-[#dfe1e6] text-[#44546f] hover:bg-[#f4f5f7] transition-colors"
@@ -552,34 +652,51 @@ const GroupCard: React.FC<{
             </div>
           </div>
 
-          {/* Compact member preview (first 3) */}
+          {/* Compact preview */}
           {!expanded && group.members.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {group.members.slice(0, 3).map((m) => (
-                <Link
-                  key={m.ticket_id}
-                  to={`/tickets/teamlead/${m.ticket_id}`}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-[#dfe1e6] bg-[#f4f5f7] hover:border-[#0052cc] hover:bg-[#deebff] transition-all text-xs"
-                >
-                  <span className="font-mono text-[#44546f]">{m.ticket_number}</span>
-                  <SimilarityBadge score={m.similarity_score} />
-                  <StatusBadge status={m.status} />
-                </Link>
-              ))}
-              {group.members.length > 3 && (
+              {group.members.slice(0, 4).map((m) => {
+                // Show "New" badge if added in last 10 minutes
+                const isNew = new Date().getTime() - new Date(m.added_at).getTime() < 10 * 60 * 1000;
+                return (
+                  <Link
+                    key={m.ticket_id}
+                    to={`/tickets/teamlead/${m.ticket_id}`}
+                    className={clsx(
+                      'inline-flex items-center gap-1.5 px-2 py-1 rounded border transition-all text-xs',
+                      m.is_parent
+                        ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+                        : isNew
+                          ? 'border-blue-300 bg-blue-50 hover:bg-blue-100'
+                          : 'border-[#dfe1e6] bg-[#f4f5f7] hover:border-[#0052cc] hover:bg-[#deebff]',
+                    )}
+                  >
+                    {m.is_parent && <span>🔑</span>}
+                    {isNew && !m.is_parent && (
+                      <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
+                        NEW
+                      </span>
+                    )}
+                    <span className="font-mono text-[#44546f]">{m.ticket_number}</span>
+                    <SimilarityBadge score={m.similarity_score} />
+                    <StatusBadge status={m.status} />
+                  </Link>
+                );
+              })}
+              {group.members.length > 4 && (
                 <span className="inline-flex items-center px-2 py-1 text-xs text-[#8993a4]">
-                  +{group.members.length - 3} more
+                  +{group.members.length - 4} more
                 </span>
               )}
             </div>
           )}
         </div>
 
-        {/* Expanded member table */}
+        {/* Expanded table */}
         {expanded && (
           <div className="border-t border-[#ebecf0]">
-            {/* Table header */}
-            <div className="grid grid-cols-[1fr_2fr_auto_auto_auto_auto] gap-3 px-5 py-2 bg-[#f4f5f7] border-b border-[#ebecf0] text-[10px] font-semibold text-[#44546f] uppercase tracking-widest">
+            <div className="grid grid-cols-[auto_1fr_2fr_auto_auto_auto_auto] gap-3 px-5 py-2 bg-[#f4f5f7] border-b border-[#ebecf0] text-[10px] font-semibold text-[#44546f] uppercase tracking-widest">
+              <span />
               <span>Ticket #</span>
               <span>Title</span>
               <span>Status</span>
@@ -587,12 +704,15 @@ const GroupCard: React.FC<{
               <span>Match</span>
               <span />
             </div>
-
             {group.members.map((m) => (
               <div
                 key={m.ticket_id}
-                className="grid grid-cols-[1fr_2fr_auto_auto_auto_auto] gap-3 items-center px-5 py-3 border-b border-[#f0f1f3] last:border-0 hover:bg-[#fafbfc] transition-colors"
+                className={clsx(
+                  'grid grid-cols-[auto_1fr_2fr_auto_auto_auto_auto] gap-3 items-center px-5 py-3 border-b border-[#f0f1f3] last:border-0 transition-colors',
+                  m.is_parent ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-[#fafbfc]',
+                )}
               >
+                <span className="text-sm">{m.is_parent ? '🔑' : ''}</span>
                 <Link
                   to={`/tickets/teamlead/${m.ticket_id}`}
                   className="text-xs font-mono text-[#0052cc] hover:underline"
@@ -612,9 +732,9 @@ const GroupCard: React.FC<{
                 <SimilarityBadge score={m.similarity_score} />
                 <button
                   onClick={() => onRemoveMember(m.ticket_id, m.ticket_number)}
-                  disabled={removingId === m.ticket_id}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-red-50 text-[#8993a4] hover:text-red-500 transition-colors disabled:opacity-40"
-                  title="Remove from group"
+                  disabled={removingId === m.ticket_id || m.is_parent}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-red-50 text-[#8993a4] hover:text-red-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={m.is_parent ? 'Cannot remove parent ticket' : 'Remove from group'}
                 >
                   {removingId === m.ticket_id ? (
                     <div className="w-3 h-3 border border-[#8993a4] border-t-transparent rounded-full animate-spin" />
@@ -626,12 +746,6 @@ const GroupCard: React.FC<{
                 </button>
               </div>
             ))}
-
-            {group.members.length === 0 && (
-              <div className="px-5 py-6 text-center text-xs text-[#8993a4]">
-                No tickets in this group.
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -639,7 +753,7 @@ const GroupCard: React.FC<{
   );
 };
 
-// ── Main Page ──────────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export const TLTicketGroupsPage: React.FC = () => {
   const { teamOverview } = useAppSelector((s) => s.tickets);
@@ -693,13 +807,11 @@ export const TLTicketGroupsPage: React.FC = () => {
       <div className="min-h-screen bg-[#f4f5f7]">
         <div className="max-w-5xl mx-auto px-6 py-6">
 
-          {/* Header */}
           <div className="flex items-start justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold text-[#172b4d]">Similar Ticket Groups</h2>
               <p className="text-[#44546f] text-sm mt-1">
                 AI-detected groups of tickets sharing the same root cause.
-                Confirm a group to unlock bulk assign and bulk resolve.
               </p>
             </div>
             <button
@@ -711,6 +823,32 @@ export const TLTicketGroupsPage: React.FC = () => {
               </svg>
               Refresh
             </button>
+          </div>
+
+          {/* Workflow guide */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-5">
+            <p className="text-xs text-blue-800 font-semibold mb-1">Workflow</p>
+            <div className="flex items-center gap-2 text-xs text-blue-700 flex-wrap">
+              <span className="flex items-center gap-1">
+                <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[10px] font-bold">1</span>
+                Confirm group
+              </span>
+              <span className="text-blue-300">→</span>
+              <span className="flex items-center gap-1">
+                <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[10px] font-bold">2</span>
+                Set parent ticket
+              </span>
+              <span className="text-blue-300">→</span>
+              <span className="flex items-center gap-1">
+                <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[10px] font-bold">3</span>
+                Assign parent to agent
+              </span>
+              <span className="text-blue-300">→</span>
+              <span className="flex items-center gap-1">
+                <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[10px] font-bold">4</span>
+                Agent resolves → all close
+              </span>
+            </div>
           </div>
 
           {/* Tabs + Search */}
@@ -736,7 +874,9 @@ export const TLTicketGroupsPage: React.FC = () => {
                       'min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center',
                       tab === key
                         ? 'bg-white/20 text-white'
-                        : key === 'unconfirmed' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600',
+                        : key === 'unconfirmed'
+                          ? 'bg-orange-100 text-orange-600'
+                          : 'bg-green-100 text-green-600',
                     )}>
                       {count}
                     </span>
@@ -766,34 +906,20 @@ export const TLTicketGroupsPage: React.FC = () => {
             </div>
           ) : filtered.length === 0 ? (
             <div className="bg-white border border-[#dfe1e6] rounded-xl px-6 py-16 text-center">
-              <div className="w-10 h-10 rounded-full bg-[#f4f5f7] flex items-center justify-center mx-auto mb-3">
-                <svg className="w-5 h-5 text-[#8993a4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              {search ? (
-                <>
-                  <p className="text-[#44546f] text-sm">No groups match your search.</p>
-                  <button
-                    onClick={() => setSearch('')}
-                    className="mt-2 text-xs text-[#0052cc] hover:underline"
-                  >
-                    Clear search
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="text-[#44546f] text-sm">
-                    {tab === 'unconfirmed'
-                      ? 'No groups need review.'
-                      : 'No confirmed groups yet.'}
-                  </p>
-                  <p className="text-[#8993a4] text-xs mt-1">
-                    {tab === 'unconfirmed'
-                      ? 'Groups appear here when AI detects similar tickets.'
-                      : 'Confirm a group from the "Needs review" tab.'}
-                  </p>
-                </>
+              <p className="text-[#44546f] text-sm">
+                {search
+                  ? 'No groups match your search.'
+                  : tab === 'unconfirmed'
+                    ? 'No groups need review.'
+                    : 'No confirmed groups yet.'}
+              </p>
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="mt-2 text-xs text-[#0052cc] hover:underline"
+                >
+                  Clear search
+                </button>
               )}
             </div>
           ) : (
